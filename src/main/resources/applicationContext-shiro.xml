@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:util="http://www.springframework.org/schema/util" xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+       http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+       http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.0.xsd"
+	default-lazy-init="true">
+
+	<description>Shiro安全配置</description>
+
+	<!-- Shiro's main business-tier object for web-enabled applications -->
+	<bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+		<property name="realm" ref="shiroDbRealm" />
+		<property name="cacheManager" ref="shiroEhcacheManager" />
+		<property name="rememberMeManager" ref="rememberMeManager"/>
+	</bean>
+
+	<!-- 会话Cookie模板  maxAge=-1表示浏览器关闭时失效此Cookie；-->
+	<bean id="sessionIdCookie" class="org.apache.shiro.web.servlet.SimpleCookie">  
+	    <constructor-arg value="sid"/>  
+	    <property name="httpOnly" value="true"/>  
+	    <property name="maxAge" value="-1"/>  
+	</bean> 
+	<!-- rememberMeCookie模板 即记住我的Cookie，保存时长30天；-->
+	<bean id="rememberMeCookie" class="org.apache.shiro.web.servlet.SimpleCookie">
+		<constructor-arg value="rememberMe" />
+		<property name="httpOnly" value="true" />
+		<property name="name" value="PipeLine" />
+		<property name="maxAge" value="2592000" /><!-- 30天 -->
+	</bean>
+	<!-- rememberMe管理器 -->
+	<bean id="rememberMeManager" class="org.apache.shiro.web.mgt.CookieRememberMeManager">
+		<property name="cipherKey"
+			value="#{T(org.apache.shiro.codec.Base64).decode('4AvVhmFLUs0KTA3Kprsdag==')}" />
+		<property name="cookie" ref="rememberMeCookie" />
+	</bean>
+
+	<!-- 項目自定义的Realm, 所有accountService依赖的dao都需要用depends-on声明 -->
+	<bean id="shiroDbRealm" class="com.asgab.service.account.ShiroDbRealm">
+		<property name="accountService" ref="accountService" />
+	</bean>
+
+	<bean id="myFormAuthenticationFilter" class="com.asgab.core.MyFormAuthenticationFilter">
+		<property name="usernameParam" value="username" />
+		<property name="passwordParam" value="password" />
+		<property name="rememberMeParam" value="rememberMe" />
+		<property name="failureKeyAttribute" value="shiroLoginFailure" />
+	</bean>
+	<bean id="jCaptchaValidateFilter" class="com.asgab.core.JCaptchaValidateFilter">
+		<property name="jcaptchaEbabled" value="false" />
+		<property name="jcaptchaParam" value="jcaptchaCode" />
+		<property name="failureKeyAttribute" value="shiroLoginFailure" />
+	</bean>
+
+
+
+	<!-- Shiro Filter -->
+	<!-- anon 拦截器表示匿名访问(即不需要登录即可访问) -->
+	<!-- authc 拦截器表示需要身份认证通过后才能访问 -->
+	<!-- roles[admin]拦截器表示需要有 admin 角色授权才能访问 -->
+	<!-- perms["user:create"] 拦截器表示需要有“user:create”权限才能访问 -->
+	<!-- Shiro也提供了logout拦截器用于退出 -->
+	<bean id="shiroFilter" class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+		<property name="securityManager" ref="securityManager" />
+		<property name="loginUrl" value="/login" />
+		<property name="successUrl" value="/businessOpportunity" />
+		<property name="filters">
+			<util:map>
+				<entry key="authc" value-ref="myFormAuthenticationFilter" />
+				<entry key="jCaptchaValidate" value-ref="jCaptchaValidateFilter" />
+			</util:map>
+		</property>
+		<property name="filterChainDefinitions">
+			<value>
+				/jcaptcha* = anon
+				/login = jCaptchaValidate,authc
+				/login/lang = anon
+				/logout = logout
+				/static/** = anon
+				/file/** = anon
+				/admin/** = roles[admin]
+				/favicon.ico = anon
+				/** = user
+			</value>
+		</property>
+	</bean>
+
+	<!-- 用户授权信息Cache, 采用EhCache -->
+	<bean id="shiroEhcacheManager" class="org.apache.shiro.cache.ehcache.EhCacheManager">
+		<property name="cacheManagerConfigFile" value="classpath:ehcache/ehcache-shiro.xml" />
+	</bean>
+
+	<!-- 保证实现了Shiro内部lifecycle函数的bean执行 -->
+	<bean id="lifecycleBeanPostProcessor" class="org.apache.shiro.spring.LifecycleBeanPostProcessor" />
+</beans>

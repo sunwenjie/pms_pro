@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.BusinessOpportunityProductMapper">
+	
+	<select id="get" parameterType="long" resultType="BusinessOpportunityProduct">
+		select id,business_opportunity_id,product_id,product_category_id,sale_mode,budget,deleted_at,created_at,updated_at
+		from sales_booking_production.business_opportunity_products
+		where deleted_at is null and id=#{id}
+	</select>
+	
+	<select id="getByBusinessOpportunityId" parameterType="long" resultType="BusinessOpportunityProduct">
+		select id,business_opportunity_id,product_id,product_category_id,sale_mode,budget,deleted_at,created_at,updated_at
+		from sales_booking_production.business_opportunity_products
+		where deleted_at is null and business_opportunity_id=#{business_opportunity_id}
+	</select>
+
+	<insert id="save" parameterType="BusinessOpportunityProduct" useGeneratedKeys="true" keyProperty="id">
+		insert into sales_booking_production.business_opportunity_products (business_opportunity_id,product_id,product_category_id,sale_mode,budget,created_at)
+		values (#{business_opportunity_id},#{product_id},#{product_category_id},#{sale_mode},#{budget},#{created_at})
+	</insert>
+	
+	<insert id="update" parameterType="BusinessOpportunityProduct">
+		update sales_booking_production.business_opportunity_products set 
+			business_opportunity_id=#{business_opportunity_id},
+			product_id=#{product_id},
+			product_category_id =#{product_category_id},
+			sale_mode=#{sale_mode},
+			budget=#{budget},
+			updated_at=#{updated_at}
+		where id = #{id}
+	</insert>
+	
+	<delete id="delete" parameterType="long">
+	     update sales_booking_production.business_opportunity_products set deleted_at= now() where id=#{value}
+	</delete>
+	
+</mapper> 

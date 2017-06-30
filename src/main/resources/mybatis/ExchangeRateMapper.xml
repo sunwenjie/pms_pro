@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ExchangeRateMapper">
+
+	<sql id="exchangeRateColumns">
+		base_currency,currency,rate,start_date,created_at,updated_at,agency_id
+	</sql>
+	
+	<select id="get" parameterType="long" resultType="ExchangeRate">
+		select id, <include refid="exchangeRateColumns" />
+		from xmo.exchange_rates
+		where id=#{id}
+	</select>
+
+	<!-- 获取当前有效的 -->
+	<select id="search" parameterType="map" resultType="ExchangeRate">
+		select * from(
+			select id, <include refid="exchangeRateColumns" />
+			from xmo.exchange_rates
+			where 1 = 1 
+			<![CDATA[
+			and start_date<=now()
+			]]>
+			order by start_date desc
+		) t  where 0=0
+		<if test="base_currency != null and base_currency !=''">
+			and (t.base_currency=#{base_currency} or '0'=#{base_currency})
+		</if>
+		<if test="currency != null and currency !=''">
+			and (t.currency=#{currency} or '0'=#{currency})
+		</if>
+		group by t.base_currency,t.currency
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+		select count(0)
+		from xmo.exchange_rates
+		where 1 = 1 
+		<if test="base_currency != null and base_currency !=''">
+			and (base_currency=#{base_currency} or '0'=#{base_currency})
+		</if>
+		<if test="currency != null and currency !=''">
+			and (currency=#{currency} or '0'=#{currency})
+		</if>
+	</select>
+	
+</mapper> 

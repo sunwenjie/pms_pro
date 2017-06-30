@@ -1,0 +1,1038 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ReportMapper">
+	
+	<select id="getOpportunitysByProduct" parameterType="Report" resultType="Report">
+			<!-- 有订单,订单不为完成. 取订单 adv.cost 售价 public_price*floor_discount 底价 -->
+			select ord.id as order_id , null as opportunity_id,getLocalByOrderId(adv.order_id) as `local`,product_categories.id as product_id,
+				getGPByProductId(adv.product_id) as gp, 
+				products.is_distribute_gp as is_distribute_gp,
+				ord.gp_evaluate as gp_evaluate,
+				product_categories.name as product_nameZh,
+				product_categories.en_name as product_nameEn,
+				ord.budget_currency as currency, 
+				adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+				adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,ord.client_id as client_id,
+				ord.start_date as orderStartDate,
+				ord.ending_date as orderEndDate,
+				clients.clientname as clientname
+			from orders ord 
+				left join advertisements adv on ord.id=adv.order_id 
+				left join products as products on adv.product_id = products.id
+				left join product_categories as product_categories on product_categories.id=products.product_category_id
+				left join xmo.clients as clients on clients.id = ord.client_id
+			where  (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null and 
+				exists (
+				select ord.id from business_opportunities a 
+					left join business_opportunity_orders b on  a.id = b.business_opportunity_id 
+				where  ( ord.state != 'examine_completed' or ord.state is null) and ord.id = b.order_id
+				<if test="progress_start != null and progress_start !=''">
+					<![CDATA[
+					and a.progress >= #{progress_start}
+					]]>
+				</if>
+				<if test="progress_end != null and progress_end !=''">
+					<![CDATA[
+					and a.progress <= #{progress_end}
+					]]>
+				</if>
+			)
+			<if test="saleRepresentative != null ">
+			and (
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				)
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+			<if test="productCategories.size() > 0 ">
+                and product_categories.id in 
+                <foreach collection="productCategories" index="index" item="productCategory" open="(" separator="," close=")" >
+                    #{productCategory}
+                </foreach> 
+            </if>
+			union all
+			<!-- 没有订单, 取本身 -->
+			select null as order_id,opp.id as opportunity_id, getLocalByOpportunityId(opp.id) as `local`,  product_categories.id as product_id, 
+				getGPByProductId(pro.product_id) as gp ,
+				products.is_distribute_gp as is_distribute_gp,
+				null as gp_evaluate,
+				product_categories.name as product_nameZh,
+				product_categories.en_name as product_nameEn,
+				cur.name as currency,pro.budget as budget,opp.budget as totalBudget, 0 as rebate, null as service_charges_scale,opp.exist_service as whether_service,
+				0 as cost,products.public_price,products.floor_discount,products.currency as product_currency ,opp.advertiser_id as client_id,
+				opp.deliver_start_date as orderStartDate,
+				opp.deliver_end_date as orderEndDate,
+				clients.clientname as clientname
+			from business_opportunities opp 
+				left join business_opportunity_products pro on opp.id=pro.business_opportunity_id
+				left join xmo.currencies cur on cur.id = opp.currency_id
+				left join products as products on pro.product_id = products.id
+				left join product_categories as product_categories on product_categories.id=products.product_category_id
+				left join xmo.clients as clients on clients.id = opp.advertiser_id
+			where opp.deleted_at is null and not exists (
+				select b.id from business_opportunity_orders a left join orders b on a.order_id = b.id
+				where a.business_opportunity_id = opp.id
+			) 
+			<if test="saleRepresentative != null ">
+			and (
+				<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >  
+					 find_in_Set(opp.owner_sale ,queryChildrenDataSharing(#{dataRightId}))
+					 OR
+					 is_mixed(opp.cooperate_sales,',',(select queryChildrenDataSharing(#{dataRightId}))) > 0
+				</foreach>
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+                and opp.deliver_start_date <= #{reportDate_end} and opp.deliver_end_date >= #{reportDate_start}
+				]]>
+			</if>
+			<if test="progress_start != null and progress_start !=''">
+				<![CDATA[
+				and opp.progress >= #{progress_start}
+				]]>
+			</if>
+			<if test="progress_end != null and progress_end !=''">
+				<![CDATA[
+				and opp.progress <= #{progress_end}
+				]]>
+			</if>
+			<if test="productCategories.size() > 0 ">
+                and product_categories.id in 
+                <foreach collection="productCategories" index="index" item="productCategory" open="(" separator="," close=")" >
+                    #{productCategory}
+                </foreach> 
+            </if>
+	</select>
+	
+	<select id="getOrdersByProduct" parameterType="Report" resultType="Report">
+		<!--取订单 -->
+		select ord.id as order_id, getLocalByOrderId(adv.order_id) as `local` , product_categories.id as product_id,
+			getGPByProductId(adv.product_id) as gp,
+			products.is_distribute_gp as is_distribute_gp,
+			ord.gp_evaluate as gp_evaluate,
+			product_categories.name as product_nameZh,
+			product_categories.en_name as product_nameEn,
+			ord.budget_currency as currency,adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,
+			ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+			adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,ord.client_id as client_id,
+			ord.start_date as orderStartDate,
+            ord.ending_date as orderEndDate,
+            clients.clientname as clientname
+		from orders ord 
+			left join advertisements adv on ord.id=adv.order_id 
+			left join products as products on adv.product_id = products.id
+			left join product_categories as product_categories on product_categories.id=products.product_category_id
+			left join xmo.clients as clients on clients.id = ord.client_id
+			where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+			<if test="saleRepresentative != null ">
+			and (
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				)
+			)
+			</if>
+		<if test="reportDate_start != null and reportDate_start !=''">
+			<![CDATA[
+			and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+			]]>
+		</if>
+		<if test="productCategories.size() > 0 ">
+            and product_categories.id in 
+            <foreach collection="productCategories" index="index" item="productCategory" open="(" separator="," close=")" >
+                #{productCategory}
+            </foreach> 
+        </if>
+	</select>
+	
+	
+	
+	
+	
+	
+	<!-- 销售团队只看自己一级下级的 -->
+	<select id="getOpportunityBySaleTeam" parameterType="Report" resultType="Report">
+		select ord.id as order_id , null as opportunity_id,IFNULL(adv.id,0) as groupbyId,getLocalByOrderId(adv.order_id) as `local`,
+                null as user_ids,
+                null as user_name,
+                group_concat(share_orders.share_id) as share_user_ids,
+                group_concat(share_users.name) as share_user_names,
+                getGPByProductId(adv.product_id) as gp, 
+                products.is_distribute_gp as is_distribute_gp,
+                ord.gp_evaluate as gp_evaluate,
+                ord.budget_currency as currency, 
+                adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+                adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+                ord.start_date as orderStartDate,
+                ord.ending_date as orderEndDate
+            from orders ord 
+                left join advertisements adv on ord.id=adv.order_id 
+                left join products as products on adv.product_id = products.id
+                left join share_orders share_orders on share_orders.order_id = adv.order_id
+                left join xmo.users share_users on share_users.id = share_orders.share_id
+                left join data_sharing data_sharing on share_users.id = data_sharing.user_id
+            where (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null and  
+                exists (
+                select ord.id from business_opportunities a 
+                    left join business_opportunity_orders b on  a.id = b.business_opportunity_id 
+                where  ( ord.state != 'examine_completed' or ord.state is null) and ord.id = b.order_id
+                <if test="progress_start != null and progress_start !=''">
+                    <![CDATA[
+                    and a.progress >= #{progress_start}
+                    ]]>
+                </if>
+                <if test="progress_end != null and progress_end !=''">
+                    <![CDATA[
+                    and a.progress <= #{progress_end}
+                    ]]>
+                </if>
+            )
+            <if test="saleRepresentative != null ">
+            and ( 
+                exists (
+                    select a.id from share_orders a where a.order_id = adv.order_id
+                    and (
+                    <foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+                        find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+                    </foreach>
+                    )
+                ) 
+            )
+            </if>
+            <if test="reportDate_start != null and reportDate_start !=''">
+                <![CDATA[
+                and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+                ]]>
+            </if>
+            group by order_id,groupbyId 
+            union all
+            <!-- 没有订单, 取本身 -->
+            select null as order_id,opp.id as opportunity_id,IFNULL(pro.id,0) as groupbyId, getLocalByOpportunityId(opp.id) as `local`,  
+                opp.owner_sale as user_ids, 
+                (select getNamesByOpportunityId(opp.id) ) as user_name,
+                opp.cooperate_sales as share_user_ids,
+                null as share_user_names,
+                getGPByProductId(pro.product_id) as gp ,
+                products.is_distribute_gp as is_distribute_gp,
+                null as gp_evaluate,
+                cur.name as currency,pro.budget as budget,opp.budget as totalBudget, 0 as rebate, null as service_charges_scale,opp.exist_service as whether_service,
+                0 as cost,products.public_price,products.floor_discount,products.currency as product_currency,
+                opp.deliver_start_date as orderStartDate,
+                opp.deliver_end_date as orderEndDate
+            from business_opportunities opp 
+                left join business_opportunity_products pro on opp.id=pro.business_opportunity_id
+                left join xmo.currencies cur on cur.id = opp.currency_id
+                left join products as products on pro.product_id = products.id
+                left join xmo.users users on users.id = opp.owner_sale              
+            where opp.deleted_at is null and not exists (
+                select b.id from business_opportunity_orders a left join orders b on a.order_id = b.id
+                where a.business_opportunity_id = opp.id
+            )
+            <if test="saleRepresentative != null ">
+            and (
+            <foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >  
+                find_in_Set(opp.owner_sale ,queryChildrenDataSharing(#{dataRightId}))
+                OR
+                is_mixed(opp.cooperate_sales,',',(select queryChildrenDataSharing(#{dataRightId}))) > 0
+            </foreach>
+            )
+            </if>
+            <if test="reportDate_start != null and reportDate_start !=''">
+                <![CDATA[
+                and opp.deliver_start_date <= #{reportDate_end} and opp.deliver_end_date >= #{reportDate_start}
+                ]]>
+            </if>
+            <if test="progress_start != null and progress_start !=''">
+                <![CDATA[
+                and opp.progress >= #{progress_start}
+                ]]>
+            </if>
+            <if test="progress_end != null and progress_end !=''">
+                <![CDATA[
+                and opp.progress <= #{progress_end}
+                ]]>
+            </if>
+            group by opportunity_id,groupbyId
+	</select>
+	
+	<select id="getOrderBySaleTeam" parameterType="Report" resultType="Report">
+	   <!--取订单 -->
+        select ord.id as order_id, IFNULL(adv.id,0) as groupbyId,getLocalByOrderId(adv.order_id) as `local` , 
+            group_concat(share_orders.share_id) as share_user_ids,
+            group_concat(users.name) as share_user_names,
+            getGPByProductId(adv.product_id) as gp,
+            products.is_distribute_gp as is_distribute_gp,
+            ord.gp_evaluate as gp_evaluate,
+            ord.budget_currency as currency,adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,
+            ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+            adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+            ord.start_date as orderStartDate,
+            ord.ending_date as orderEndDate
+        from orders ord left join advertisements adv on ord.id=adv.order_id 
+            left join products as products on adv.product_id = products.id
+            left join share_orders share_orders on share_orders.order_id = adv.order_id
+            left join xmo.users users on users.id = share_orders.share_id
+        where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+        <if test="saleRepresentative != null ">
+        and (
+            exists (
+                select a.id from share_orders a where a.order_id = adv.order_id
+                and (
+                <foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+                    find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+                </foreach>
+                )
+            )
+        )
+        </if>
+        <if test="reportDate_start != null and reportDate_start !=''">
+            <![CDATA[
+            and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+            ]]>
+        </if>
+        group by order_id,groupbyId 
+	</select>
+	
+	
+	
+	
+	
+	
+	
+	
+	<select id="getOpportunityBySaleRepresentative" parameterType="Report" resultType="Report">
+		select ord.id as order_id , null as opportunity_id,IFNULL(adv.id,0) as groupbyId,getLocalByOrderId(adv.order_id) as `local`,
+				null as user_ids,
+				null as user_name,
+				group_concat(share_orders.share_id) as share_user_ids,
+				group_concat(share_users.name) as share_user_names,
+				getGPByProductId(adv.product_id) as gp, 
+				products.is_distribute_gp as is_distribute_gp,
+				ord.gp_evaluate as gp_evaluate,
+				ord.budget_currency as currency, 
+				adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+				adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+				ord.start_date as orderStartDate,
+                ord.ending_date as orderEndDate
+			from orders ord 
+				left join advertisements adv on ord.id=adv.order_id 
+				left join products as products on adv.product_id = products.id
+				left join share_orders share_orders on share_orders.order_id = adv.order_id
+				left join xmo.users share_users on share_users.id = share_orders.share_id
+				left join data_sharing data_sharing on share_users.id = data_sharing.user_id
+			where (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null and  
+				exists (
+				select ord.id from business_opportunities a 
+					left join business_opportunity_orders b on  a.id = b.business_opportunity_id 
+				where  ( ord.state != 'examine_completed' or ord.state is null) and ord.id = b.order_id
+				<if test="progress_start != null and progress_start !=''">
+					<![CDATA[
+					and a.progress >= #{progress_start}
+					]]>
+				</if>
+				<if test="progress_end != null and progress_end !=''">
+					<![CDATA[
+					and a.progress <= #{progress_end}
+					]]>
+				</if>
+			)
+			<if test="saleRepresentative != null ">
+			and ( 
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				) 
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+			group by order_id,groupbyId 
+			union all
+			<!-- 没有订单, 取本身 -->
+			select null as order_id,opp.id as opportunity_id,IFNULL(pro.id,0) as groupbyId, getLocalByOpportunityId(opp.id) as `local`,  
+				opp.owner_sale as user_ids, 
+				(select getNamesByOpportunityId(opp.id) ) as user_name,
+				opp.cooperate_sales as share_user_ids,
+				null as share_user_names,
+				getGPByProductId(pro.product_id) as gp ,
+				products.is_distribute_gp as is_distribute_gp,
+				null as gp_evaluate,
+				cur.name as currency,pro.budget as budget,opp.budget as totalBudget, 0 as rebate, null as service_charges_scale,opp.exist_service as whether_service,
+				0 as cost,products.public_price,products.floor_discount,products.currency as product_currency,
+				opp.deliver_start_date as orderStartDate,
+                opp.deliver_end_date as orderEndDate
+			from business_opportunities opp 
+				left join business_opportunity_products pro on opp.id=pro.business_opportunity_id
+				left join xmo.currencies cur on cur.id = opp.currency_id
+				left join products as products on pro.product_id = products.id
+				left join xmo.users users on users.id = opp.owner_sale				
+			where opp.deleted_at is null and not exists (
+				select b.id from business_opportunity_orders a left join orders b on a.order_id = b.id
+				where a.business_opportunity_id = opp.id
+			)
+			<if test="saleRepresentative != null ">
+			and (
+			<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >  
+				find_in_Set(opp.owner_sale ,queryChildrenDataSharing(#{dataRightId}))
+				OR
+				is_mixed(opp.cooperate_sales,',',(select queryChildrenDataSharing(#{dataRightId}))) > 0
+			</foreach>
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and opp.deliver_start_date <= #{reportDate_end} and opp.deliver_end_date >= #{reportDate_start}
+				]]>
+			</if>
+			<if test="progress_start != null and progress_start !=''">
+				<![CDATA[
+				and opp.progress >= #{progress_start}
+				]]>
+			</if>
+			<if test="progress_end != null and progress_end !=''">
+				<![CDATA[
+				and opp.progress <= #{progress_end}
+				]]>
+			</if>
+			group by opportunity_id,groupbyId
+	</select>
+	
+	<select id="getOrderBySaleRepresentative" parameterType="Report" resultType="Report">
+		<!--取订单 -->
+		select ord.id as order_id, IFNULL(adv.id,0) as groupbyId,getLocalByOrderId(adv.order_id) as `local` , 
+			group_concat(share_orders.share_id) as share_user_ids,
+			group_concat(users.name) as share_user_names,
+			getGPByProductId(adv.product_id) as gp,
+			products.is_distribute_gp as is_distribute_gp,
+			ord.gp_evaluate as gp_evaluate,
+			ord.budget_currency as currency,adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,
+			ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+			adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+			ord.start_date as orderStartDate,
+            ord.ending_date as orderEndDate
+		from orders ord left join advertisements adv on ord.id=adv.order_id 
+			left join products as products on adv.product_id = products.id
+			left join share_orders share_orders on share_orders.order_id = adv.order_id
+			left join xmo.users users on users.id = share_orders.share_id
+		where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+		<if test="saleRepresentative != null ">
+		and (
+			exists (
+				select a.id from share_orders a where a.order_id = adv.order_id
+				and (
+				<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+					find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+				</foreach>
+				)
+			)
+		)
+		</if>
+		<if test="reportDate_start != null and reportDate_start !=''">
+			<![CDATA[
+			and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+			]]>
+		</if>
+		group by order_id,groupbyId 
+	</select>
+	
+	
+	
+	
+	
+	
+	
+	<select id="getOpportunitysByChannel" parameterType="Report" resultType="Report">
+			<!--  有订单,订单不为完成. 取订单 -->
+			select ord.id as order_id , null as opportunity_id,getLocalByOrderId(adv.order_id) as `local`,clients.channel as channel ,
+				getGPByProductId(adv.product_id) as gp,
+				products.is_distribute_gp as is_distribute_gp,
+				ord.gp_evaluate as gp_evaluate,
+				channels.channel_name as channel_name,ord.budget_currency as currency, 
+				adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+				adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+				ord.start_date as orderStartDate,
+                ord.ending_date as orderEndDate 
+			from orders ord 
+				left join advertisements adv on ord.id=adv.order_id 
+				left join xmo.clients as clients on clients.id = ord.client_id
+				left join channels as channels on clients.channel = channels.id
+				left join products as products on adv.product_id = products.id
+			where (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null and 
+				exists (
+				select ord.id from business_opportunities a 
+					left join business_opportunity_orders b on  a.id = b.business_opportunity_id 
+				where  ( ord.state != 'examine_completed' or ord.state is null) and ord.id = b.order_id
+				<if test="progress_start != null and progress_start !=''">
+					<![CDATA[
+					and a.progress >= #{progress_start}
+					]]>
+				</if>
+				<if test="progress_end != null and progress_end !=''">
+					<![CDATA[
+					and a.progress <= #{progress_end}
+					]]>
+				</if>
+			)
+			<if test="saleRepresentative != null ">
+			and ( 
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				)
+			)
+			</if>
+			and  clients.whether_channel = 1 and clients.channel != '' and clients.channel is not null
+			<if test="channels.size() > 0 ">
+				and channels.id in 
+				<foreach collection="channels" index="index" item="channelId" open="(" separator="," close=")" >
+					#{channelId}
+				</foreach> 
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+			union all
+			<!--  没有订单, 取本身 -->
+			select null as order_id,opp.id as opportunity_id, getLocalByOpportunityId(opp.id) as `local`,clients.channel as channel ,
+				getGPByProductId(pro.product_id) as gp,
+				products.is_distribute_gp as is_distribute_gp,
+				null as gp_evaluate,
+				channels.channel_name as channel_name,cur.name as currency,pro.budget as budget,
+				opp.budget as totalBudget,0 as rebate, null as service_charges_scale,opp.exist_service as whether_service,
+				0 as cost,products.public_price,products.floor_discount ,products.currency as product_currency,
+				opp.deliver_start_date as orderStartDate,
+                opp.deliver_end_date as orderEndDate
+			from business_opportunities opp left join business_opportunity_products pro on opp.id=pro.business_opportunity_id
+				left join xmo.currencies cur on cur.id = opp.currency_id
+				left join xmo.clients as clients on clients.id = opp.advertiser_id
+				left join channels as channels on clients.channel = channels.id
+				left join products as products on pro.product_id = products.id
+			where opp.deleted_at is null and not exists (
+				select b.id from business_opportunity_orders a left join orders b on a.order_id = b.id
+				where a.business_opportunity_id = opp.id
+			) 
+			and clients.whether_channel = 1 and clients.channel != '' and clients.channel is not null
+			<if test="saleRepresentative != null ">
+			and (
+			<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >  
+				find_in_Set(opp.owner_sale ,queryChildrenDataSharing(#{dataRightId}))
+				OR
+				is_mixed(opp.cooperate_sales,',',(select queryChildrenDataSharing(#{dataRightId}))) > 0
+			</foreach>
+			)
+			</if>
+			<if test="channels.size() > 0 ">
+				and channels.id in 
+				<foreach collection="channels" index="index" item="channelId" open="(" separator="," close=")" >
+					#{channelId}
+				</foreach> 
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and opp.deliver_start_date <= #{reportDate_end} and opp.deliver_end_date >= #{reportDate_start}
+				]]>
+			</if>
+			<if test="progress_start != null and progress_start !=''">
+				<![CDATA[
+				and opp.progress >= #{progress_start}
+				]]>
+			</if>
+			<if test="progress_end != null and progress_end !=''">
+				<![CDATA[
+				and opp.progress <= #{progress_end}
+				]]>
+			</if>
+	</select>
+	
+	<select id="getOrdersByChannel" parameterType="Report" resultType="Report">
+		select ord.id as order_id, getLocalByOrderId(adv.order_id) as `local` ,clients.channel as channel ,
+			getGPByProductId(adv.product_id) as gp,
+			products.is_distribute_gp as is_distribute_gp,
+			ord.gp_evaluate as gp_evaluate,
+			channels.channel_name as channel_name,ord.budget_currency as currency, 
+			adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,ord.service_charges_scale as service_charges_scale,
+			ord.whether_service as whether_service ,adv.cost,products.public_price,products.floor_discount ,products.currency as product_currency,
+			ord.start_date as orderStartDate,
+            ord.ending_date as orderEndDate
+		from orders ord left join advertisements adv on ord.id=adv.order_id 
+			left join xmo.clients as clients on clients.id = ord.client_id
+			left join channels as channels on clients.channel = channels.id
+			left join products as products on adv.product_id = products.id
+		where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+			and  clients.whether_channel = 1 and clients.channel != '' and clients.channel is not null
+			<if test="saleRepresentative != null ">
+			and ( 
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				)
+			)
+			</if>
+			<if test="channels.size() > 0 ">
+				and channels.id in 
+				<foreach collection="channels" index="index" item="channelId" open="(" separator="," close=")" >
+					#{channelId}
+				</foreach> 
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+	</select>
+	
+	
+	<select id="getOrdersByAdPlatform" parameterType="Report" resultType="Report">
+		select ord.id as order_id, getLocalByOrderId(adv.order_id) as `local` ,
+			getGPByProductId(adv.product_id) as gp,
+			products.is_distribute_gp as is_distribute_gp,
+			ord.gp_evaluate as gp_evaluate,
+			case when products.product_type like 'PC%' then 'PC'
+				when products.product_type like 'Mo%' then 'Mobile'
+				else 'Other' END ad_platform,
+			ord.budget_currency as currency,adv.budget_ratio as budget,ord.budget as totalBudget,IFNULL(ord.rebate,0) as rebate,
+			ord.service_charges_scale as service_charges_scale,ord.whether_service as whether_service,
+			adv.cost,products.public_price,products.floor_discount,products.currency as product_currency,
+			ord.start_date as orderStartDate,
+            ord.ending_date as orderEndDate
+		from orders ord left join advertisements adv on ord.id=adv.order_id 
+			left join products as products on adv.product_id = products.id
+			where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+			<if test="saleRepresentative != null ">
+			and ( 
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+					<foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >  
+						find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+					</foreach>
+					)
+				)
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+	</select>
+	
+	<select id="getCampaignOrderIds" parameterType="Report" resultType="Long">
+		select ord.id from orders ord
+			left join advertisements adv on ord.id=adv.order_id 
+			where ord.state = 'examine_completed' and (ord.free_tag is null or ord.free_tag != '1') and ord.deleted_at is null
+			<if test="saleRepresentative != null ">
+			and ( 
+				exists (
+					select a.id from share_orders a where a.order_id = adv.order_id
+					and (
+                    <foreach collection="saleRepresentative" index="index" item="dataRightId" open="" separator="OR" close="" >   
+                        find_in_Set(a.share_id,queryChildrenDataSharing(#{dataRightId}))
+                    </foreach>
+                    )
+				)
+			)
+			</if>
+			<if test="reportDate_start != null and reportDate_start !=''">
+				<![CDATA[
+				and ord.start_date <= #{reportDate_end} and ord.ending_date >= #{reportDate_start}
+				]]>
+			</if>
+	</select>
+	
+	<select id="getCampaign" parameterType="map" resultType="Report">		
+            SELECT campaign_id as order_code, SUM(dashboard_expense) AS expenses
+FROM (
+    SELECT c.id AS campaign_id, c.order_code, 
+    COALESCE(s.expenses_sells * xmo.get_eff_cx_rate('RMB', IFNULL(c.curreny, 'RMB'), curdate()),0) AS dashboard_expense
+    FROM (SELECT searchengine_id, network, MAX(expenses_sells) as expenses_sells
+        FROM (SELECT s.searchengine_id AS searchengine_id, network, event_id, COALESCE(SUM(clicks_true), 0) AS clicks, COALESCE(SUM(impressions_true), 0) AS impressions,
+            COALESCE(SUM(expenses_sells),0) as expenses_sells
+            FROM xmo.searchengines se
+                JOIN xmo_summaries.search_market_conversions_summary s ON se.id = s.searchengine_id
+            WHERE 
+
+                <![CDATA[
+                            s.k_date>=#{reportDate_start} and s.k_date<=#{reportDate_end}
+                ]]>
+
+            GROUP BY 1, 2, 3
+            ) ff
+        GROUP BY 1, 2
+        ) s
+        LEFT JOIN xmo.searchengines se ON s.searchengine_id = se.id
+        LEFT JOIN xmo.pretargetings p ON p.searchengine_bshare_id = se.id
+        JOIN xmo.campaigns c ON se.campaign_id = c.id
+        JOIN sales_booking_production.orders o ON o.code = c.order_code
+    WHERE c.plan_type = 'AD EXCHANGE'
+        AND c.order_code IS NOT NULL
+        AND c.order_code != ''
+        AND o.id IN 
+            <foreach collection="orderList" index="index" item="orderId" open="(" separator="," close=")" >
+                ${orderId}
+            </foreach>
+
+
+        AND p.page_position = 'ANY'
+        
+    GROUP BY 1, 2
+    UNION ALL
+
+    SELECT c.id AS campaign_id, c.order_code, 
+    COALESCE(s.expenses_sells * xmo.get_eff_cx_rate('RMB', IFNULL(c.curreny, 'RMB'), curdate()),0) AS dashboard_expense
+    FROM (SELECT searchengine_id, network, MAX(expenses_sells) as expenses_sells
+        FROM (SELECT s.searchengine_id AS searchengine_id, network, event_id, COALESCE(SUM(clicks_true), 0) AS clicks, COALESCE(SUM(impressions_true), 0) AS impressions,
+            COALESCE(SUM(expenses_sells),0) as expenses_sells
+            FROM xmo.searchengines se
+                JOIN xmo_summaries.search_market_conversions_summary s ON se.id = s.searchengine_id
+            WHERE 
+
+                <![CDATA[
+                            s.k_date>=#{reportDate_start} and s.k_date<=#{reportDate_end}
+                ]]>
+
+            GROUP BY 1, 2, 3
+            ) ff
+        GROUP BY 1, 2
+        ) s
+        LEFT JOIN xmo.searchengines se ON s.searchengine_id = se.id
+        LEFT JOIN xmo.pretargetings p ON p.searchengine_id = se.id
+        JOIN xmo.campaigns c ON se.campaign_id = c.id
+        JOIN sales_booking_production.orders o ON o.code = c.order_code
+    WHERE c.plan_type = 'AD EXCHANGE'
+        AND c.order_code IS NOT NULL
+        AND c.order_code != ''
+        AND o.id IN 
+            <foreach collection="orderList" index="index" item="orderId" open="(" separator="," close=")" >
+                ${orderId}
+            </foreach>
+        AND p.page_position = 'ANY'
+        
+    GROUP BY 1, 2
+    UNION ALL
+    SELECT c.id AS campaign_id, c.order_code, 
+    COALESCE(SUM(figs.expenses_sells) * xmo.get_eff_cx_rate('RMB', IFNULL(c.curreny, 'RMB'), curdate()),0) AS dashboard_expense
+    FROM xmo.campaigns c
+        LEFT JOIN (SELECT date_i, campaign_id, settle_amount, settle_way, creative_id
+                , SUM(impressions) AS impressions, SUM(clicks) AS clicks, SUM(expenses_sells) as expenses_sells
+            FROM (SELECT date_i, c.campaign_id, settle_amount, settle_way, creative_id
+                    , displayimage_id, convert(settle_amount * SUM(impressions_true), DECIMAL(20, 2)) AS impressions, convert(settle_amount * SUM(clicks), DECIMAL(20, 2)) AS clicks,
+                   COALESCE(SUM(expenses_sells),0) as expenses_sells 
+                FROM xmo_summaries.imageviews_report_summary_core c
+                    JOIN xmo.creatives ct ON ct.id = c.creative_id
+                WHERE displayimage_id > 0
+                    AND creative_id > 0
+                    AND placement_id > 0
+
+                    <![CDATA[
+                          AND  date_i>=#{reportDate_start} and date_i<=#{reportDate_end}
+                    ]]>
+
+                GROUP BY 1, 2, 3, 4, 5, 6
+                ) a
+                LEFT JOIN (SELECT b1.displayimage_id,b1.cdate_i
+                    FROM xmo_summaries.banner_market_conversions_summary b1
+                        JOIN xmo.eventinfos b2 ON b2.conversion_field = 1
+                            AND b1.event_id = b2.id 
+                            where 
+
+                            <![CDATA[
+                            b1.cdate_i>=#{reportDate_start} and b1.cdate_i<=#{reportDate_end}
+                             ]]>
+
+                    ) b ON a.displayimage_id = b.displayimage_id
+                    AND a.date_i = b.cdate_i
+            GROUP BY 1, 2
+            ) figs ON c.id = figs.campaign_id
+        JOIN sales_booking_production.orders o ON c.order_code = o.code
+    WHERE c.deleted_at = false
+        AND o.id IN 
+            <foreach collection="orderList" index="index" item="orderId" open="(" separator="," close=")" >
+                ${orderId}
+            </foreach>
+        AND c.campaigntype = 'DISPLAY'
+        AND (c.id IS NOT NULL
+            OR c.plan_type IN ('EXTERNAL MEDIA', 'MOTV MEDIA', 'MOSOCIAL MEDIA', 'MOFEED MEDIA'))
+        
+    GROUP BY 1, 2
+) dsp_otv
+GROUP BY campaign_id
+			
+	</select>
+	
+	<select id="getQuarterReport" resultType="ReportQuarter">
+		select *, round(aa.quarter_have_day/aa.total_day*aa.budget_in_USD*aa.product_GP,0) as final_gp
+		from
+		(SELECT a.id, b.id as productid, a.name as ordername, a.deliver_start_date, a.deliver_end_date, 
+		<![CDATA[
+		(DATEDIFF(LAST_DAY(MAKEDATE(EXTRACT(YEAR FROM CURDATE()),1) + interval QUARTER(CURDATE())*3-1 month),
+		date(concat(year(CURDATE()),'-',elt(quarter(CURDATE()),1,4,7,10),'-',1)) 
+		) + 1) - (case when a.deliver_end_date >= #{1} then 0 else ABS(DATEDIFF(a.deliver_end_date, LAST_DAY(MAKEDATE(EXTRACT(YEAR FROM CURDATE()),1) 
+		+ interval QUARTER(CURDATE())*3-1 month))) end) - (case when a.deliver_start_date <= #{0} then 0 else 
+		ABS(DATEDIFF(a.deliver_start_date, date(concat(year(CURDATE()),'-',elt(quarter(CURDATE()),1,4,7,10),'-',1))))
+		end) quarter_have_day,
+		 ]]>
+		DATEDIFF(date(a.deliver_end_date), date(a.deliver_start_date) ) + 1 as total_day,
+		 c.name, a.remark, b.sale_mode, cur.name as currency, exchanges.rate,
+		a.budget as total_budget, b.budget as product_budget, 
+		round(b.budget/exchanges.rate,2) as budget_in_USD, 
+		round((case when c.name like '%others%' then 50 else min(product.gp) end)/100,2) as product_GP,
+		a.progress,   a.owner_sale, 
+		users.name as username, a.cooperate_sales, users.bu as user_group, 
+		case when users.bu like '%int%' then 'intl' else 'iSG' end as BU
+		FROM business_opportunities a
+		left join business_opportunity_products b on a.id = b.business_opportunity_id 
+		left join product_categories c  on b.product_category_id = c.id
+		left join (select distinct product_category_id, min(gp)as gp from products where gp is not null group by product_category_id) product on c.id = product.product_category_id
+		left join xmo.currencies cur on cur.id = a.currency_id
+		left join xmo.users users on users.id = a.owner_sale
+		left join xmo.exchange_rates_real_time exchanges on cur.name = exchanges.currency and exchanges.base_currency = 'USD'
+		<![CDATA[
+			where a.deliver_end_date >= #{0}
+			and a.deliver_start_date <= #{1}
+		 ]]>
+		and a.progress >= 50
+		and b.deleted_at is null
+		and a.deleted_at is null
+		and c.is_delete = 0
+		group by 1, 2, 7,13
+		) as aa
+	</select>
+	
+	<select id="generateFinance" resultType="ReportFinance">
+		SELECT order_code orderID,BU bu,searchengine platform,clientname client,campaignname campaign,adgroup_name adgroup,/*currency_cli*/ "RMB" currency,is_sell_model sellModel,
+			ifnull(round((case when searchengine = 'BSHARE' then b.cpm_all else xmo.get_eff_cx_rate('HKD', 'RMB', curdate()) * expenses_currency_cli end),2),'-')originalCost,
+			ifnull(round((case when (searchengine ='GDN' and is_sell_model ='Budget') then (xmo.get_eff_cx_rate('HKD', 'RMB', curdate()) * expense_after_markup_all)  else expense_after_markup_all end),2),'-')markUpCost,
+			ifnull(round(b.acelink,2),'-') accuen,
+			ifnull(round(b.tanx,2),'-') tanx,
+			ifnull(round(b.mediamax,2),'-') mediamax,
+			ifnull(round(b.vam,2),'-') vam,
+			case when searchengine = 'GDN' then 'GDN' else '-' end gdn, 
+			t.name am,useremail email
+			from
+			(SELECT
+			  c.order_code,
+			  cli.id client_id,
+			  se.id searchengines_id,
+			  p.name adgroup_name,
+			  c.id as campaign_id,
+			  p.id pretargetings_id,
+			  bus.name as 'BU',
+			  cli.clientname,
+			   c.campaignname,
+			IF(se.searchengine!='Google', UPPER(se.searchengine), IF(se.searchenginename LIKE '%gdn', 'GDN', 'ADX')) AS searchengine,
+			  currency_cli,
+			  sum(impressions_true) as impressions,
+			  sum(clicks_true) as clicks,
+			  COALESCE(sum(expenses),0) expenses_currency_cli,
+			  CASE WHEN (p.settle_way = '0' or COALESCE(p.is_markup,0) = '1') THEN COALESCE(SUM(expenses) * (100.0 + COALESCE(p.media_expense_rate,0))/100.0,0) ELSE COALESCE(SUM(expenses_sells),0) END AS expense_after_markup_all,
+			  sum(expenses_sells)*(100.0 + COALESCE(p.channel_expense_rate,0))/(100.0) AS 'expense_after_markup',
+			  COALESCE(p.channel_expense_rate,0) AS cost_adjustment_channel,
+			  COALESCE(p.media_expense_rate,0) AS cost_adjustment_media,
+			  case p.settle_way when 1 then 'CPC' when '2' then 'CPM' ELSE 'Budget' END AS is_sell_model,
+			  p.settle_amount AS 'sell_model_bid_price(RMB)',
+			  ROUND(p.settle_amount*ex_r.rate,2) AS 'sell_model_bid_price_cli',
+			  sum(expenses_sells)*ex_r.rate as sell_model_expenses,
+			  us.name, useremail,usercontact
+			FROM xmo_summaries.search_market_conversions_summary s
+			INNER JOIN xmo.searchengines se ON s.searchengine_id = se.id
+			INNER JOIN
+			(SELECT pretargetings.client_id,pretargetings.id,pretargetings.name,  pretargetings.campaign_id, pretargetings.searchengine_gdn_id AS searchengine_id, pretargetings.settle_way, pretargetings.settle_amount, pretargetings.channel_expense_rate, pretargetings.media_expense_rate,is_markup
+			           FROM xmo.pretargetings
+			where page_position = 'ANY'
+			UNION ALL
+			         SELECT pretargetings.client_id,pretargetings.id, pretargetings.name, pretargetings.campaign_id, pretargetings.searchengine_bshare_id AS searchengine_id,pretargetings.settle_way, pretargetings.settle_amount, pretargetings.channel_expense_rate, pretargetings.media_expense_rate,is_markup
+			           FROM xmo.pretargetings
+			where page_position = 'ANY'
+			UNION ALL
+			         SELECT pretargetings.client_id,pretargetings.id, pretargetings.name, pretargetings.campaign_id, pretargetings.searchengine_id AS searchengine_id,pretargetings.settle_way, pretargetings.settle_amount, pretargetings.channel_expense_rate, pretargetings.media_expense_rate,is_markup
+			           FROM xmo.pretargetings
+			where page_position = 'ANY'
+			) p
+			ON p.searchengine_id = se.id
+			INNER JOIN xmo.campaigns c ON p.campaign_id = c.id
+			INNER JOIN xmo.clients cli ON cli.id = se.client_id
+			left JOIN xmo.business_units bus ON cli.business_unit_id = bus.id
+			INNER JOIN xmo.users us ON cli.user_id = us.id
+			LEFT JOIN (
+			  SELECT
+			    t1.*
+			  FROM xmo.exchange_rates t1
+			  JOIN (
+			    SELECT max(id) id, base_currency, currency, rate, created_at
+			    FROM xmo.exchange_rates
+			    GROUP BY base_currency, currency
+			  ) t2
+			  ON t1.id = t2.id
+			  union (select -1, 'RMB', 'RMB', 1, '2014-01-01', null, null, 1)
+			) ex_r
+			ON ex_r.base_currency = 'RMB' AND ex_r.currency = currency_cli
+			
+			LEFT JOIN (
+			  SELECT client_id, min(id) event_id FROM xmo.eventinfos GROUP BY 1
+			) e
+			ON e.client_id = p.client_id
+			WHERE s.k_date BETWEEN  #{0} AND #{1}
+			AND network = 'CONTENT'
+			AND IFNULL(e.event_id, -1) = IFNULL(s.event_id, -1)
+			GROUP BY se.id DESC
+			ORDER BY se.searchengine, p.id) t
+			left join (select * from xmo_summaries.fed_auto_report where dtdate = #{2}) b
+			on t.pretargetings_id = b.adgroup_id
+	</select>
+	
+    <update id="clearTable">
+        delete from  ${tableName}
+    </update>
+	<insert id="insertCurrentWeekData">
+        insert into current_week_data
+        select t.id,t.client_id,t.name,t.code,t.clientname,t.title,t.budget,t.budget_currency,t.budget_ratio,t.ad_platform,
+        t.ad_type,t.sale_model,t.cost,trim(both '---' from t.BU) as bu,t.group_names,t.area,t.created_user,t.is_standard,t.free_tag,t.gp_evaluate,
+        t.rebate,t.market_cost,t.start_date,t.ending_date,t.total_day,
+         <![CDATA[
+        case when t.start_date > t.last_day_current_quarter or t.ending_date < t.first_day_current_quarter then 0 else
+        (t.total_day - t.before_current_quarter_day - t.after_current_quarter_day)
+        end as current_quarter_have_day,
+        case when t.start_date > t.last_day_shang_quarter or t.ending_date < t.first_day_shang_quarter then 0 else
+        (t.total_day - t.before_shang_quarter_day - t.after_shang_quarter_day)
+        end as shang_quarter_have_day,
+        ]]>
+        now() as create_time
+        from
+        (select od.id, ud.client_id, od.name, od.code,ud.clientname,od.title,
+        od.budget, od.budget_currency,ad.budget_ratio,
+        case when ad.ad_type like 'P%' then 'PC'
+        when ad.ad_type like 'M%' then 'Mobile'
+        when ad.ad_type like 'O%' then 'Others'
+        else
+        'Others'
+        end as ad_platform, ad.ad_type,
+        ad.sale_model,ad.cost,ud.BU,Group_concat(distinct od.group_name) as group_names,Group_concat(distinct od.area) as area, ud.created_user, od.is_standard,od.free_tag,od.gp_evaluate,od.rebate,od.market_cost,
+        od.start_date, od.ending_date,
+        od.last_day_current_quarter,
+        od.first_day_current_quarter,
+        od.first_day_shang_quarter,
+        od.last_day_shang_quarter,
+        <![CDATA[
+        case when od.start_date >= od.first_day_current_quarter then 0 else abs(datediff(od.start_date,od.first_day_current_quarter)) end as before_current_quarter_day,
+        case when od.ending_date <= od.last_day_current_quarter then 0 else abs(datediff(od.ending_date,od.last_day_current_quarter)) end as after_current_quarter_day,
+        case when od.start_date >= od.first_day_shang_quarter then 0 else abs(datediff(od.start_date,od.first_day_shang_quarter)) end as before_shang_quarter_day,
+        case when od.ending_date <= od.last_day_shang_quarter then 0 else abs(datediff(od.ending_date,od.last_day_shang_quarter)) end as after_shang_quarter_day,
+             ]]>
+        abs(datediff(date(od.ending_date), date(od.start_date) )) + 1 as total_day
+        from (
+        select s.id,s.code,s.title,s.operator,s.start_date,s.ending_date,s.ad_platform,s.ad_type,
+        s.budget,s.budget_currency,s.state,s.created_at,s.updated_at,s.client_id,s.planner_check,
+        s.is_standard,s.free_tag,s.rebate,s.market_cost,s.gp_evaluate,
+        g.group_name,
+        case when g.group_name like '%华北直客%' then '华北直客'
+        when g.group_name like '%华东直客%' then '华东直客'
+        when g.group_name like '%华南直客%' then '华南直客'
+        when g.group_name like '%华北渠道%' then '华北渠道'
+        when g.group_name like '%华东渠道%' then '华东渠道'
+        when g.group_name like '%华南渠道%' then '华南渠道'
+        else
+        '非iCN团队'
+        end as area,
+        ins.name,
+        (select date(concat(year(curdate()),'-',elt(quarter(curdate()),1,4,7,10),'-',1)) from dual) as first_day_current_quarter,
+        (select last_day(makedate(extract(year from curdate()),1) + interval quarter(curdate())*3-1 month) from dual) as last_day_current_quarter,
+        (select date(concat(date_format(last_day(makedate(extract(year FROM curdate()),1) + interval quarter(curdate())*3-6 month),'%Y-%m-'),'01'))  from dual) as first_day_shang_quarter,
+        (select last_day(makedate(extract(year from curdate()),1) + interval quarter(curdate())*3-4 month) from dual) as last_day_shang_quarter
+        FROM sales_booking_production.orders s
+        join xmo.clients on clients.id = s.client_id
+        join xmo.users u on u.id = s.user_id
+        left join sales_booking_production.share_orders sc on u.id = sc.share_id
+        left join sales_booking_production.share_order_groups cg on s.id = cg.order_id
+        left join xmo.groups g on cg.share_id = g.id
+        left join xmo.industries ins on clients.industry_id = ins.id
+        where s.deleted_at is null
+        and ending_date>='2016-01-01'
+        and s.state='examine_completed'
+        ) od
+        join (
+        select
+        advertisements.budget_ratio,advertisements.ad_platform,advertisements.ad_type,
+        advertisements.cost_currency,advertisements.created_at,advertisements.updated_at,
+        advertisements.order_id,advertisements.product_id,advertisements.cost,
+        pr.sale_model
+        FROM sales_booking_production.advertisements
+        left join  sales_booking_production.products pr on advertisements.product_id = pr.id
+        ) ad
+        on od.id=ad.order_id
+        join
+        (SELECT s.id, s.client_id, xmo.clients.clientname,xmo.clients.created_user, s.user_id, u.username, u.BU
+        FROM sales_booking_production.orders s
+        join xmo.clients on xmo.clients.id = s.client_id
+        join xmo.users u on u.id = s.user_id) ud
+        on od.id=ud.id
+        group by id, clientname, title, budget, budget_ratio, ad_type
+        order by id, budget, budget_ratio, cost
+        ) t
+    </insert>
+
+    <insert id="insertCurrentWeekAllData">
+        insert into current_week_all_data
+        select c.* from v_change_order v ,current_week_data c where v.c_id = c.id and v.is_delete = 0
+        union all
+        select l.* from v_change_order v ,last_week_data l where v.l_id = l.id and v.is_delete = 1;
+    </insert>
+
+    <insert id="insertLastWeekData" >
+        insert into last_week_data
+        select * from current_week_all_data;
+    </insert>
+
+    <select id="getPipelineReport" resultType="ReportPipeline">
+       select  t.id,t.client_id,t.name,t.code,t.clientname,t.title,ifnull(t.budget,0.0) as budget,t.budget_currency,
+       ifnull(t.budget_ratio,0.0) as budget_ratio,t.ad_platform,t.ad_type,t.sale_model,
+       ifnull(t.cost,0.0) as cost,t.bu,t.group_names,t.area,t.created_user,t.is_standard,t.free_tag,
+       ifnull(t.gp_evaluate,0.0) as gp_evaluate,ifnull(t.rebate,0.0) as rebate,ifnull(t.market_cost,0.0) as market_cost,
+       t.start_date,t.ending_date,t.total_day,t.current_quarter_have_day,t.shang_quarter_have_day,t.is_add,t.is_delete,t.is_test,t.is_update
+       from
+       (select c.*,v.is_add,v.is_delete,v.is_test,v.is_update from v_change_order v ,current_week_data c where v.c_id = c.id and v.is_delete = 0
+        union all
+        select l.*,v.is_add,v.is_delete,v.is_test,v.is_update from v_change_order v ,last_week_data l where v.l_id = l.id and v.is_delete = 1
+        ) t
+    </select>
+
+    <select id="getCountByTable" resultType="int">
+        select count(1) from ${tableName};
+    </select>
+
+
+</mapper> 

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ClientExaminationMapper">
+    
+    <select id="getNewestProcess" parameterType="Map" resultType="ClientExamination">
+        select id, approval, comment, created_user, from_state, to_state, examinable_id, created_at from 
+        sales_booking_production.examinations
+        where examinable_type = 'Client' 
+        <if test="client_id != null">
+             and examinable_id = #{client_id}
+        </if>
+        <if test="from_state != null">
+             and from_state = #{from_state}
+        </if>
+        <if test="to_state != null">
+             and to_state = #{to_state}
+        </if> 
+        and created_at = 
+        (
+        
+	        select MAX(created_at) from sales_booking_production.examinations
+	        where examinable_type = 'Client' 
+	        <if test="client_id != null">
+	             and examinable_id = #{client_id}
+	        </if>
+	        <if test="from_state != null">
+	             and from_state = #{from_state}
+	        </if>
+	        <if test="to_state != null">
+	             and to_state = #{to_state}
+	        </if>
+	     )
+        
+    </select>
+	
+</mapper> 

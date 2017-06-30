@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ReportSendingMapper">
+	<insert id="insert" parameterType="com.asgab.entity.ReportSending">
+		insert into reports (name, file_path, receives, send_time, status) values (#{name}, #{file_path}, #{receives}, #{send_time}, #{status})
+	</insert>
+	
+	<update id="update" parameterType="com.asgab.entity.ReportSending">
+		update reports set name = #{name}, file_path = #{file_path}, receives = #{receives}, send_time = #{send_time}, status = #{status} where id = #{id}
+	</update>
+	
+	<select id="getSendingsByStatus" parameterType="int" resultType="com.asgab.entity.ReportSending">
+		select * from reports where status = #{status}
+	</select>
+</mapper>

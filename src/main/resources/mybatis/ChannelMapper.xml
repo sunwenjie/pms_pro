@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ChannelMapper">
+
+	<sql id="channelColumns">
+		channel_name,contact_person,position,phone,email,company_adress,qualification_name,currency_id
+	</sql>
+
+	<select id="get" parameterType="long" resultType="Channel">
+		select id, <include refid="channelColumns"/>
+		from channels
+		where id=#{id}
+	</select>
+
+	<!-- 获取当前有效的 -->
+	<select id="search" parameterType="map" resultType="Channel">
+		select id, channel_name,contact_person,position,phone,email
+		from channels where 1=1
+		<if test="channel_name != null and channel_name !=''">
+			and channel_name like "%"#{channel_name}"%"
+		</if>
+
+	</select>
+
+	<select id="countChannels" parameterType="map" resultType="int">
+		select count(1) from (
+		select channels.id,channels.channel_name,channels.created_at,channels.is_delete,channels.qualification_name,channels.currency_id,channels.company_adress,channels.contact_person,channels.phone,
+		channels.email,channels.position,
+		group_concat(users.name) sales,currencies.name currency_name,
+		GROUP_CONCAT(DATE_FORMAT(channel_rebates.start_date,'%Y/%m/%d'),' ~ ',DATE_FORMAT(channel_rebates.end_date,'%Y/%m/%d')) rebate_date,
+		GROUP_CONCAT(DATE_FORMAT(channel_rebates.start_date,'%Y/%m/%d'),' ~ ',DATE_FORMAT(channel_rebates.end_date,'%Y/%m/%d'), '  ' ,channel_rebates.rebate, '%') rebate_date_totip,
+		GROUP_CONCAT(channel_rebates.rebate) ch_rebate
+		from channels
+		left join xmo.currencies on channels.currency_id = currencies.id
+		left join channel_rebates on channels.id = channel_rebates.channel_id
+		left join user_channels on user_channels.channel_id = channels.id
+		left join xmo.users on users.id = user_channels.user_id
+		where (channels.is_delete is null or channels.is_delete = '')
+
+		<if test="userIds != null and userIds.size > 0">
+			and (user_channels.user_id in
+			<foreach collection="userIds" index="index" item="item" open="(" separator="," close=")">
+				#{item}
+			</foreach>
+			or user_channels.channel_id is null)
+		</if>
+
+		<if test="name != null ">
+			and channels.channel_name like "%"#{name}"%"
+		</if>
+		<if test="sales != null ">
+			and users.name like "%"#{sales}"%"
+		</if>
+
+		<if test="createDateStart != null">
+			<![CDATA[
+				and channels.created_at >= #{createDateStart}
+				]]>
+		</if>
+		<if test="createDateEnd != null">
+			<![CDATA[
+				and channels.created_at <=  #{createDateEnd}
+				]]>
+		</if>
+		group by channels.id order by channels.updated_at desc
+		) t
+		<if test="sales != null ">
+			where t.sales like "%"#{sales}"%"
+		</if>
+	</select>
+
+	<!-- admin 获取当前用户所能查看的channels -->
+    <select id="searchChannels" parameterType="map" resultType="Channel">
+       select t.* from (select channels.id,channels.channel_name,channels.created_at,channels.is_delete,channels.qualification_name,channels.currency_id,channels.company_adress,channels.contact_person,channels.phone,
+		channels.email,channels.position,
+       group_concat(users.name) sales,currencies.name currency_name,
+       GROUP_CONCAT(DATE_FORMAT(channel_rebates.start_date,'%Y/%m/%d'),' ~ ',DATE_FORMAT(channel_rebates.end_date,'%Y/%m/%d')) rebate_date,
+       GROUP_CONCAT(DATE_FORMAT(channel_rebates.start_date,'%Y/%m/%d'),' ~ ',DATE_FORMAT(channel_rebates.end_date,'%Y/%m/%d'), '  ' ,channel_rebates.rebate, '%') rebate_date_totip,
+       GROUP_CONCAT(channel_rebates.rebate) ch_rebate
+          from channels
+          left join xmo.currencies on channels.currency_id = currencies.id
+          left join channel_rebates on channels.id = channel_rebates.channel_id
+          left join user_channels on user_channels.channel_id = channels.id
+          left join xmo.users on users.id = user_channels.user_id
+          where (channels.is_delete is null or channels.is_delete = '')
+		<if test="userIds != null and userIds.size > 0 ">
+			and (user_channels.user_id in
+			<foreach collection="userIds" index="index" item="item" open="(" separator="," close=")">
+				#{item}
+			</foreach>
+			or user_channels.channel_id is null)
+		</if>
+		<if test="name != null ">
+			and channels.channel_name like "%"#{name}"%"
+		</if>
+
+		<if test="createDateStart != null">
+			<![CDATA[
+				and channels.created_at >= #{createDateStart}
+				]]>
+		</if>
+		<if test="createDateEnd != null">
+			<![CDATA[
+				and channels.created_at <=  #{createDateEnd}
+				]]>
+		</if>
+          group by channels.id order by channels.updated_at desc) t
+
+		<if test="sales != null ">
+			where t.sales like "%"#{sales}"%"
+		</if>
+	</select>
+
+
+	<select id="findCanSeeChannel"  parameterType="map" resultType="Long">
+		select create_user from permissions where 1=1 and approval_user = #{current_user_id}
+		and node_id = 12
+	</select>
+
+	<insert id="insertChannel" useGeneratedKeys="true" keyProperty="id" parameterType="Channel">
+		insert into channels (<include refid="channelColumns"/>, created_at, updated_at) value
+		(#{channel_name},#{contact_person},#{position},#{phone},#{email},#{company_adress},#{qualification_name},#{currency_id}, #{created_at}, #{updated_at})
+	</insert>
+	
+	<update id="updateChannel" parameterType="Channel">
+		update channels set channel_name=#{channel_name},contact_person=#{contact_person},position=#{position},phone=#{phone},email=#{email},company_adress=#{company_adress},
+		qualification_name=#{qualification_name},currency_id=#{currency_id}, updated_at = #{updated_at} where id = #{id}
+	</update>
+	
+	<select id="getAllUserIdsByChannel" parameterType="long" resultType="string">
+		SELECT group_concat(distinct(user_id)) FROM user_channels where channel_id = #{id}
+	</select>
+	
+	<delete id="deleteUserChannelRelation" parameterType="long">
+		delete from user_channels where channel_id = #{channelId}
+	</delete>
+	
+	<insert id="addUserChannelRelation">
+		insert into user_channels (channel_id, user_id) values
+		<foreach collection="users" item="item" separator=",">
+		(#{channelId}, #{item})
+		</foreach>
+	</insert>
+	
+	<select id="getRebatesByChannelId" parameterType="long" resultType="ChannelRebate">
+		select * from channel_rebates where channel_id = #{channelId}
+	</select>
+	
+	<delete id="deleteRebates" parameterType="long">
+		delete from channel_rebates where channel_id = #{channelId}
+	</delete>
+	
+	<insert id="addRebates" parameterType="list">
+		insert into channel_rebates (start_date, end_date, rebate, channel_id) values
+		<foreach collection="list" item="item" separator=",">
+		(#{item.start_date}, #{item.end_date}, #{item.rebate}, #{item.channel_id})
+		</foreach>
+	</insert>
+	
+	<delete id="delete" parameterType="long">
+		delete from channels where id = #{id}
+	</delete>
+</mapper>

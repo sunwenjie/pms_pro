@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ClientShareMapper">
+
+	<select id="search" parameterType="map" resultType="ClientShare">
+		select id, client_id, share_id
+		from share_clients
+		where 1 = 1
+		<if test="client_id != null">
+		    and client_id = #{client_id}
+		</if>
+	</select>
+	
+	<insert id="save" parameterType="ClientShare" useGeneratedKeys="true" keyProperty="id">
+	    insert into share_clients(client_id, share_id, created_at, updated_at) 
+	    values( #{client_id}, #{share_id}, now(), now()) 
+	</insert>
+	
+	<delete id="delete" parameterType="long">
+	    delete from share_clients where id = #{id}
+	</delete>
+	
+	<delete id="deleteByClientId" parameterType="long">
+	    delete from share_clients where client_id = #{id}
+	</delete>
+	
+</mapper> 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ProductMapper">
+	
+	<!-- 查询用户,演示: 1.输入用map传入多个参数 2.<where>语句, 智能添加where和and关键字 3.输出直接映射对象 -->
+	<select id="search" parameterType="map" resultType="Product">
+		select id,
+				<if test="lang != null and lang == 'en'">
+				    concat(en_name,IFNULL(concat(' - ',regional),'')) as name
+				</if>
+				<if test="lang != null and lang != 'en'">
+				    concat(name,IFNULL(concat(' - ',regional),'')) as name
+				</if>
+				<if test="lang == null">
+				    concat(en_name,IFNULL(concat(' - ',regional),'')) as name
+				</if>
+				, product_category_id
+		from sales_booking_production.products where is_delete=0
+		<if test="name != null">
+			and (name like "%"#{name}"%" 
+				or en_name like "%"#{name}"%" 
+			)
+		</if>
+		<if test="productType != null">
+		    and product_category_id = #{productType}
+		</if>
+	</select>
+	
+	<select id="get" parameterType="Long" resultType="Product">
+		select id,name,en_name
+		from sales_booking_production.products where is_delete=0 and id=#{id}
+	</select>
+	
+</mapper> 

@@ -1,0 +1,12 @@
+/target/
+/.classpath
+/.settings/
+/.checkstyle
+.idea/
+pms.iml
+src/test/java/com/asgab/service/account/AccountServiceTest.java
+src/main/resources/log4j.properties
+src/main/resources/excel/sendemails/
+src/main/resources/application.properties
+src/main/resources/rebel.xml
+src/main/java/com/asgab/.DS_Store

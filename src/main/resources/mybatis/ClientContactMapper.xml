@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ClientContactMapper">
+
+    <sql id="client_contact_columns">
+        client_id, contact_person, phone, email, position, is_delete, created_at, updated_at
+    </sql>
+    
+    <select id="get" parameterType="long" resultType="ClientContact">
+        select id, <include refid="client_contact_columns" />
+		from xmo.client_contacts
+		where is_delete is null and id = #{id}
+    </select>
+    
+	<select id="search" parameterType="map" resultType="ClientContact">
+		select id, <include refid="client_contact_columns" />
+		from xmo.client_contacts
+		where is_delete is null 
+		<if test="client_id != null">
+			and client_id = #{client_id}		    
+		</if>
+	</select>
+	
+	<insert id="save" parameterType="ClientContact" useGeneratedKeys="true" keyProperty="id">
+		insert into xmo.client_contacts (<include refid="client_contact_columns" />)
+		values ( #{client_id}, #{contact_person}, #{phone}, #{email}, #{position}, null, #{created_at}, #{updated_at} )
+	</insert>
+	
+	<update id="update" parameterType="ClientContact">
+		update xmo.client_contacts set 
+			contact_person = #{contact_person}, phone = #{phone}, email = #{email}, position = #{position}, 
+			is_delete = #{is_delete}, updated_at = #{updated_at}
+		where id = #{id}
+	</update>
+	
+	<delete id="delete" parameterType="long">
+	    update xmo.client_contacts set is_delete = 0, updated_at = now() where id = #{id}
+	</delete>
+	
+	<delete id="deleteByClientId" parameterType="long">
+	    update xmo.client_contacts set is_delete = 0, updated_at = now() where client_id = #{id}
+	</delete>
+	
+	<select id="getClientContactsByClientIdList" parameterType="list" resultType="ClientContact">
+		select id,<include refid="client_contact_columns" /> from xmo.client_contacts
+		where is_delete is null and client_id in
+		<foreach collection="list" item="client_id" separator="," open="(" close=")">
+			#{client_id}
+		</foreach>
+	</select>
+	
+</mapper> 

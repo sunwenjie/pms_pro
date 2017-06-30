@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.AgencyMapper">
+
+    <sql id="agency_columns">
+        channel_name, is_cancel_examine
+    </sql>
+    
+    <sql id="agency_columns_for_join">
+        a.channel_name, a.is_cancel_examine
+    </sql>
+    
+	<select id="get" parameterType="long" resultType="Agency">
+		select id, <include refid="agency_columns" />
+		from channels 
+		where id = #{id}
+	</select>
+
+	<select id="search" parameterType="map" resultType="Agency">
+		select id, <include refid="agency_columns" />
+		from channels
+		where is_delete is null
+		<if test="name != null and name != ''">
+		    and channel_name like "%"#{name}"%"
+		</if>
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+		select count(1) 
+		from channels
+		where is_delete is null
+		<if test="name != null and name != ''">
+		    and channel_name like "%"#{name}"%"
+		</if>
+	</select>
+
+	<insert id="save" parameterType="Agency" useGeneratedKeys="true" keyProperty="id">
+		insert into channels (<include refid="agency_columns" />)
+		values ( #{channel_name}, #{is_cancel_examine} )
+	</insert>
+	
+	<update id="update" parameterType="Agency">
+		update channels set 
+			channel_name = #{channel_name},
+			is_cancel_examine = #{is_cancel_examine}
+		where id = #{id}
+	</update>
+	
+	<delete id="delete" parameterType="long">
+	     update channels set is_delete = 1 where id = #{id}
+	</delete>
+	
+</mapper> 

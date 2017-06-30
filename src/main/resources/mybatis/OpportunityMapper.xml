@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.OpportunityMapper">
+	<!--
+		获取用户: 输出直接映射到对象, login_name列要"as loginName"以方便映射 ,team_id as "team.id"创建team对象并赋值
+	-->
+	<select id="get" parameterType="long" resultType="Opportunity">
+		select id,task,progress,deleted
+		from pms_opportunity
+		where deleted = 1 and id=#{id}
+	</select>
+
+	<!-- 查询用户,演示: 1.输入用map传入多个参数 2.<where>语句, 智能添加where和and关键字 3.输出直接映射对象 -->
+	<select id="search" parameterType="map" resultType="Opportunity">
+		select id,task,progress,deleted
+		from pms_opportunity where deleted = 1
+		<if test="task != null">
+			and task like "%"#{task}"%"
+		</if>
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+		select count(1) 
+		from pms_opportunity where deleted = 1
+		<if test="task != null">
+			and task like "%"#{task}"%"
+		</if>
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+
+	<insert id="save" parameterType="Opportunity" useGeneratedKeys="true" keyProperty="id">
+		insert into pms_opportunity (task,progress,deleted)
+		values (#{task},#{progress},1)
+	</insert>
+	
+	<insert id="update" parameterType="Opportunity">
+		update pms_opportunity set 
+		task=#{task},
+		progress=#{progress}
+		where id = #{id}
+	</insert>
+	
+	<!-- 删除用户 -->
+	<delete id="delete" parameterType="long">
+	     update pms_opportunity set deleted=2 where id=#{id}
+	</delete>
+</mapper> 

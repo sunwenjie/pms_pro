@@ -1,0 +1,532 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.ClientMapper">
+
+    <sql id="client_columns">
+  		clientname,brand,industry_id,whether_channel,channel,currency_id,address,whether_cross_district,
+  		company_name,website_name,website_address,organization_code,icp,business_licence,organization_code_scan_file,
+ 		business_licence_scan_file,icp_scan_file,status,created_at,user_id,updated_at,state
+    </sql>
+    
+    <sql id="client_columns_for_join">
+        a.clientname,a.brand,a.industry_id,a.whether_channel,a.channel,a.currency_id,a.address,a.whether_cross_district,
+  		a.company_name,a.website_name,a.website_address,a.organization_code,a.icp,a.business_licence,a.organization_code_scan_file,
+ 		a.business_licence_scan_file,a.icp_scan_file,a.status,a.created_at,a.user_id,a.updated_at,a.state
+    </sql>
+    
+    
+	<select id="get" parameterType="long" resultType="Client" flushCache="true">
+		select a.id, <include refid="client_columns_for_join" /> ,c.channel_name as channel_name,GROUP_CONCAT(d.`id`) as saleIds, GROUP_CONCAT(d.`name`) as saleNames
+		,a.linkman_position as position, a.clientemail as email, a.clientphone as phone, a.clientcontact as contact_person,
+		e.name as currencyTypeName, f.name_cn as industryTypeNameZH, f.name as industryTypeNameEN
+		from xmo.clients a 
+		left join sales_booking_production.share_clients b on a.id = b.client_id 
+		left join xmo.users d on b.share_id = d.id
+		left join sales_booking_production.channels c on a.channel = c.id
+		left join xmo.currencies e on e.id = a.currency_id
+		left join xmo.industries f on f.id = a.industry_id
+		where a.id = #{id}
+	</select>
+	
+	<select id="countClients" parameterType="map" resultType="int">
+	    select count(1) 
+	    from
+	    (
+		    select count(1)
+		    from
+		    (
+			   <!-- 客户创建者 -->
+		        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a where a.user_id = #{currUserId}
+		        
+		        union all
+			    
+			    <!-- 客户审批者 -->
+			    select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+			    	left join sales_booking_production.share_clients on a.id = share_clients.client_id
+		            left join sales_booking_production.permissions on (permissions.create_user = a.user_id or permissions.create_user = share_clients.share_id)
+		        where permissions.model = 'Client' and approval_user = #{currUserId}
+		        		
+		        union all
+		       
+		        <!-- 客户负责人（销售） -->
+		        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+		        	left join share_clients on a.id = share_clients.client_id 
+		        where share_clients.share_id = #{currUserId}
+		        		
+		        union all
+		        
+		        <!-- 客户组 -->
+		        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+		        	left join client_groups on a.id = client_groups.client_id
+		            left join xmo.users_groups on client_groups.group_id = users_groups.group_id 
+		        where users_groups.user_id = #{currUserId}
+		    ) a 
+		    left join sales_booking_production.share_clients b on a.id = b.client_id
+		    left join xmo.users d on b.share_id = d.id
+		    left join sales_booking_production.channels c on a.channel = c.id 
+		    where a.state is not null and a.status != 'Stop' 
+		    <if test="fmt_clientNumber != null">
+				and CAST(a.id AS CHAR) = #{fmt_clientNumber}
+			</if>
+			<if test="name_brand_channel != null">
+			    and( a.clientname like "%"#{name_brand_channel}"%" or a.brand like "%"#{name_brand_channel}"%" or c.channel_name like "%"#{name_brand_channel}"%"  )
+			</if>
+			<if test="clientname != null">
+				and a.clientname like "%"#{clientname}"%"
+			</if>
+			<if test="brand != null">
+				and a.brand like "%"#{brand}"%"
+			</if>
+			<if test="channel != null">
+				and a.channel = #{channel}
+			</if>
+			<if test="industry_id != null">
+				and a.industry_id = #{industry_id}
+			</if>
+			<if test="state != null">
+				and a.state = #{state}
+			</if>
+			<if test="created_by != null">
+	            and a.user_id = #{created_by}            
+	        </if>
+	        <if test="created_period != null">
+	            and (a.created_at between #{created_period_start} and #{created_period_end})         
+	        </if>
+			<!-- 三个 OR 关系 -->
+			<if test="or_clientname != null || or_brand != null || or_channel_name != null">
+			    and
+			    (
+			    	1 = 2
+			    	<if test="or_clientname != null">
+			    	    or a.clientname like "%"#{or_clientname}"%"
+			    	</if>
+			    	<if test="or_brand != null">
+			    	    or a.brand like "%"#{or_brand}"%"
+			    	</if>
+			    	<if test="or_channel_name != null">
+			    	    or c.channel_name like "%"#{or_channel_name}"%"
+			    	</if>
+			    )
+			</if>
+			
+			<if test="createDateStart != null">
+				<![CDATA[
+				and a.created_at >= #{createDateStart}
+				]]>
+			</if>
+			<if test="createDateEnd != null">
+				<![CDATA[
+				and a.created_at <=  #{createDateEnd}
+				]]>
+			</if>
+			<if test="saleIds != null">
+				and EXISTS
+			    (
+			    	select 1 from sales_booking_production.share_clients where client_id = a.id and share_id in
+			    	<foreach collection="saleIds" index="index" item="item" open="(" separator="," close=")">
+			            #{item}
+			        </foreach>
+			    )
+			</if>
+			group by a.id
+		) t
+	</select>
+	
+	<sql id="clientContact_columns_for_join">
+	    a.linkman_position, a.clientemail, a.clientphone, a.clientcontact
+	</sql>
+	
+	<select id="searchClients" parameterType="map" resultType="Client">
+	    select a.id, <include refid="client_columns_for_join"/>, c.channel_name as channel_name,GROUP_CONCAT(d.`id`) as saleIds, GROUP_CONCAT(d.`name`) as saleNames
+		,a.linkman_position as position, a.clientemail as email, a.clientphone as phone, a.clientcontact as contact_person,
+		z.name as created_user
+	    from
+	    (
+		    <!-- 客户创建者 -->
+	        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a where a.user_id = #{currUserId}
+	        
+	        union all
+		    
+		    <!-- 客户审批者 -->
+		    select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+		    	left join sales_booking_production.share_clients on a.id = share_clients.client_id
+	            left join sales_booking_production.permissions on (permissions.create_user = a.user_id or permissions.create_user = share_clients.share_id)
+	        where permissions.model = 'Client' and approval_user = #{currUserId}
+	        		
+	        union all
+	       
+	        <!-- 客户负责人（销售） -->
+	        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+	        	left join share_clients on a.id = share_clients.client_id 
+	        where share_clients.share_id = #{currUserId}
+	        		
+	        union all
+	        
+	        <!-- 客户组 -->
+	        select a.id, <include refid="client_columns_for_join"/>,<include refid="clientContact_columns_for_join" /> from xmo.clients a
+	        	left join client_groups on a.id = client_groups.client_id
+	            left join xmo.users_groups on client_groups.group_id = users_groups.group_id 
+	        where users_groups.user_id = #{currUserId}
+	    ) a 
+	    left join sales_booking_production.share_clients b on a.id = b.client_id
+	    left join xmo.users d on b.share_id = d.id
+	    left join sales_booking_production.channels c on a.channel = c.id
+	    left join xmo.users z on a.user_id = z.id
+	    <!-- LEFT JOIN
+		     (SELECT t4.examinable_id,group_concat(t4.status ORDER BY t4.node_id ASC) AS status
+		      	FROM
+		        (SELECT t2.examinable_id,
+		                t2.node_id,
+		                t2.status
+		           FROM sales_booking_production.examinations t2,
+		           (SELECT e.examinable_id,
+		                   e.node_id,
+		                   max(e.id) AS maxid
+		            FROM sales_booking_production.examinations e
+		            WHERE e.examinable_type = 'Client'
+		            GROUP BY e.examinable_id,
+		                     e.node_id
+		           ) t3
+		         WHERE t2.id = t3.maxid) t4
+		      GROUP BY t4.examinable_id
+		     ) t5 ON a.id = t5.examinable_id  -->
+	    where a.state is not null and a.status != 'Stop' 
+	    <if test="fmt_clientNumber != null">
+			and CAST(a.id AS CHAR) = #{fmt_clientNumber}
+		</if>
+		<if test="name_brand_channel != null">
+		    and( a.clientname like "%"#{name_brand_channel}"%" or a.brand like "%"#{name_brand_channel}"%" or c.channel_name like "%"#{name_brand_channel}"%"  )
+		</if>
+		<if test="clientname != null">
+			and a.clientname like "%"#{clientname}"%"
+		</if>
+		<if test="brand != null">
+			and a.brand like "%"#{brand}"%"
+		</if>
+		<if test="channel != null">
+			and a.channel = #{channel}
+		</if>
+		<if test="industry_id != null">
+			and a.industry_id = #{industry_id}
+		</if>
+		<if test="state != null">
+			and a.state = #{state}
+		</if>
+		<if test="created_by != null">
+            and a.user_id = #{created_by}            
+        </if>
+        <if test="created_period != null">
+            and (a.created_at between #{created_period_start} and #{created_period_end})         
+        </if>
+		<!-- 三个 OR 关系 -->
+		<if test="or_clientname != null || or_brand != null || or_channel_name != null">
+		    and
+		    (
+		    	1 = 2
+		    	<if test="or_clientname != null">
+		    	    or a.clientname like "%"#{or_clientname}"%"
+		    	</if>
+		    	<if test="or_brand != null">
+		    	    or a.brand like "%"#{or_brand}"%"
+		    	</if>
+		    	<if test="or_channel_name != null">
+		    	    or c.channel_name like "%"#{or_channel_name}"%"
+		    	</if>
+		    )
+		</if>
+		
+		<if test="createDateStart != null">
+			<![CDATA[
+			and a.created_at >= #{createDateStart}
+			]]>
+		</if>
+		<if test="createDateEnd != null">
+			<![CDATA[
+			and a.created_at <=  #{createDateEnd}
+			]]>
+		</if>
+		<if test="saleIds != null">
+			and EXISTS
+		    (
+		    	select 1 from sales_booking_production.share_clients where client_id = a.id and share_id in
+                <foreach collection="saleIds" index="index" item="item" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+		    )
+		</if>
+		group by a.id
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+
+	<select id="search" parameterType="map" resultType="Client">
+		select a.id, <include refid="client_columns_for_join" />, c.channel_name as channel_name,GROUP_CONCAT(d.`id`) as saleIds, GROUP_CONCAT(d.`name`) as saleNames
+		,a.linkman_position as position, a.clientemail as email, a.clientphone as phone, a.clientcontact as contact_person,
+		z.name as created_user
+		from xmo.clients a 
+		left join sales_booking_production.share_clients b on a.id = b.client_id
+		left join xmo.users d on b.share_id = d.id
+		left join sales_booking_production.channels c on a.channel = c.id 
+		left join xmo.users as z on a.user_id = z.id
+		where a.state is not null and a.status != 'Stop' 
+		<if test="fmt_clientNumber != null">
+			and CAST(a.id AS CHAR) = #{fmt_clientNumber}
+		</if>
+		<if test="name_brand_channel != null">
+		    and( a.clientname like "%"#{name_brand_channel}"%" or a.brand like "%"#{name_brand_channel}"%" or c.channel_name like "%"#{name_brand_channel}"%"  )
+		</if>
+		<if test="clientname != null">
+			and a.clientname like "%"#{clientname}"%"
+		</if>
+		<if test="brand != null">
+			and a.brand like "%"#{brand}"%"
+		</if>
+		<if test="channel != null">
+			and a.channel = #{channel}
+		</if>
+		<if test="industry_id != null">
+			and a.industry_id = #{industry_id}
+		</if>
+		<if test="state != null">
+			and a.state = #{state}
+		</if>
+		<if test="created_by != null">
+            and a.user_id = #{created_by}            
+        </if>
+        <if test="created_period != null">
+            and (a.created_at between #{created_period_start} and #{created_period_end})         
+        </if>
+		<!-- 三个 OR 关系 -->
+		<if test="or_clientname != null || or_brand != null || or_channel_name != null">
+		    and
+		    (
+		    	1 = 2
+		    	<if test="or_clientname != null">
+		    	    or a.clientname like "%"#{or_clientname}"%"
+		    	</if>
+		    	<if test="or_brand != null">
+		    	    or a.brand like "%"#{or_brand}"%"
+		    	</if>
+		    	<if test="or_channel_name != null">
+		    	    or c.channel_name like "%"#{or_channel_name}"%"
+		    	</if>
+		    )
+		</if>
+		
+		<if test="createDateStart != null">
+			<![CDATA[
+			and a.created_at >= #{createDateStart}
+			]]>
+		</if>
+		<if test="createDateEnd != null">
+			<![CDATA[
+			and a.created_at <=  #{createDateEnd}
+			]]>
+		</if>
+		<if test="saleIds != null">
+			and EXISTS
+		    (
+		    	select 1 from sales_booking_production.share_clients where client_id = a.id and share_id in
+                <foreach collection="saleIds" index="index" item="item" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+		    )
+		</if>
+		group by a.id
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+	select count(1) from (
+		select count(1) 
+		from xmo.clients a 
+		left join sales_booking_production.share_clients b on a.id = b.client_id
+		left join xmo.users d on b.share_id = d.id
+		left join sales_booking_production.channels c on a.channel = c.id 
+		where a.state is not null and a.status != 'Stop' 
+		<if test="fmt_clientNumber != null">
+			and CAST(a.id AS CHAR) = #{fmt_clientNumber}
+		</if>
+		<if test="name_brand_channel != null">
+		    and( a.clientname like "%"#{name_brand_channel}"%" or a.brand like "%"#{name_brand_channel}"%" or c.channel_name like "%"#{name_brand_channel}"%"  )
+		</if>
+		<if test="clientname != null">
+			and a.clientname like "%"#{clientname}"%"
+		</if>
+		<if test="brand != null">
+			and a.brand like "%"#{brand}"%"
+		</if>
+		<if test="channel != null">
+			and a.channel = #{channel}
+		</if>
+		<if test="industry_id != null">
+			and a.industry_id = #{industry_id}
+		</if>
+		<if test="status != null">
+			and a.status = #{status}
+		</if>
+		<if test="state != null">
+			and a.state = #{state}
+		</if>
+		<if test="created_by != null">
+            and a.user_id = #{created_by}            
+        </if>
+        <if test="created_period != null">
+            and (a.created_at between #{created_period_start} and #{created_period_end})         
+        </if>
+		<!-- 三个 OR 关系 -->
+		<if test="or_clientname != null || or_brand != null || or_channel_name != null">
+		    and
+		    (
+		    	1 = 2
+		    	<if test="or_clientname != null">
+		    	    or a.clientname like "%"#{or_clientname}"%"
+		    	</if>
+		    	<if test="or_brand != null">
+		    	    or a.brand like "%"#{or_brand}"%"
+		    	</if>
+		    	<if test="or_channel_name != null">
+		    	    or c.channel_name like "%"#{or_channel_name}"%"
+		    	</if>
+		    )
+		</if>
+		
+		<if test="createDateStart != null">
+			<![CDATA[
+			and a.created_at >= #{createDateStart}
+			]]>
+		</if>
+		<if test="createDateEnd != null">
+			<![CDATA[
+			and a.created_at <=  #{createDateEnd}
+			]]>
+		</if>
+		<if test="saleIds != null">
+		    and EXISTS
+		    (
+		    	select 1 from sales_booking_production.share_clients where client_id = a.id and share_id in
+                <foreach collection="saleIds" index="index" item="item" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+		    )
+		</if>
+		group by a.id) t 
+	</select>
+
+	<insert id="save" parameterType="Client" useGeneratedKeys="true" keyProperty="id">
+		insert into xmo.clients 
+			(clientname,brand,industry_id,whether_channel,channel,currency_id,address,whether_cross_district,
+  		company_name,website_name,website_address,organization_code,icp,business_licence,organization_code_scan_file,
+ 		business_licence_scan_file,icp_scan_file,status,created_at,user_id,updated_at,state,group_id,manage_option,
+ 		clientcontact,clientemail,clientphone,linkman_position,business_unit_id)
+		values 
+			(#{clientname},#{brand},#{industry_id},#{whether_channel},#{channel},#{currency_id},#{address},#{whether_cross_district},
+		#{company_name},#{website_name},#{website_address},#{organization_code},#{icp},#{business_licence},#{organization_code_scan_file},
+		#{business_licence_scan_file},#{icp_scan_file},#{status},#{created_at},#{user_id},#{updated_at},#{state},0,'share',
+		#{contact_person},#{email},#{phone},#{position},1)
+	</insert>
+	
+	<update id="update" parameterType="Client">
+		update xmo.clients set 
+			clientname=#{clientname},brand=#{brand},industry_id=#{industry_id},whether_channel=#{whether_channel},
+			channel=#{channel},currency_id=#{currency_id},address=#{address},whether_cross_district=#{whether_cross_district},
+  			company_name=#{company_name},website_name=#{website_name},website_address=#{website_address},
+  			organization_code=#{organization_code},icp=#{icp},business_licence=#{business_licence},organization_code_scan_file=#{organization_code_scan_file},
+ 			business_licence_scan_file=#{business_licence_scan_file},icp_scan_file=#{icp_scan_file},status=#{status},
+ 			updated_at=#{updated_at},
+ 			state=#{state},
+ 			clientcontact=#{contact_person},clientemail=#{email},clientphone=#{phone},linkman_position=#{position}
+		where id = #{id}
+	</update>
+	
+	<select id="getClientsByIdList" parameterType="list" resultType="Client">
+		select a.id,<include refid="client_columns_for_join" />, c.channel_name as channel_name 
+		,a.linkman_position as position, a.clientemail as email, a.clientphone as phone, a.clientcontact as contact_person
+		from xmo.clients a
+		left join sales_booking_production.channels c on a.channel = c.id
+		where a.id in
+		<foreach collection="list" item="id" separator="," open="(" close=")">
+			#{id}
+		</foreach>
+	</select>
+	
+	<select id="getAdvertisers" parameterType="map" resultType="Client">
+	select distinct(id),clientname,currency_id from (
+		select clients.id,clients.clientname,clients.currency_id from xmo.clients left join sales_booking_production.share_clients on clients.id = share_clients.client_id
+               left join sales_booking_production.permissions on (permissions.create_user = clients.user_id or  permissions.create_user = share_clients.share_id)
+        		where clients.deleted_at is null  and permissions.model = 'Client' 
+        		<if test="user_id != null">
+        		      and approval_user = #{user_id}
+        		</if>
+
+        union all
+        
+        select id,clientname,currency_id from xmo.clients where 1=1
+        <if test="user_id != null">
+             and user_id = #{user_id}
+        </if>
+        
+        union all
+        
+        select clients.id,clients.clientname,clients.currency_id from xmo.clients 
+        		left join share_clients on clients.id = share_clients.client_id where 
+        		1=1
+        		<if test="user_id != null">
+		             and share_clients.share_id = #{user_id}
+		        </if>
+        union all
+        
+        select clients.id,clients.clientname,clients.currency_id from xmo.clients 
+        		left join client_groups on clients.id = client_groups.client_id
+                left join xmo.users_groups on client_groups.group_id = users_groups.group_id 
+                where 1=1
+                <if test="user_id != null">
+                     and users_groups.user_id = #{user_id}
+                </if>
+        ) t
+	</select>
+	
+	<delete id="delete" parameterType="long">
+	    update xmo.clients set status = 'Stop', deleted_at = now() where id = #{value}
+	</delete>
+	
+	<select id="canApproval" parameterType="map" resultType="boolean">
+	     select count(1)
+  		 from xmo.clients c left join sales_booking_production.share_clients s on c.id = s.client_id
+   		 	left join sales_booking_production.permissions p on( p.create_user = c.user_id or p.create_user = s.share_id)
+   		 where c.id = #{client_id} and p.model = 'Client' and p.approval_user = #{approval_user} and node_id = #{node_id}
+	</select>
+	
+	
+	<!-- 合并广告主, 修改受影响的表 orders,share_clients,client_groups,xmo.client_contacts-->
+	<select id="getTableIdsByClientIds" parameterType="map" resultType="MergeTable" statementType="STATEMENT">
+	   select id,client_id from ${table} where client_id in 
+	   <foreach collection="list" item="id" separator="," open="(" close=")">
+            ${id}
+       </foreach>
+	</select>
+	
+	<update id="updateTablesClientId" parameterType="map" statementType="STATEMENT">
+	   update ${table} set client_id = ${client_id} where id in
+	   <foreach collection="list" item="id" separator="," open="(" close=")">
+            ${id}
+       </foreach>
+	</update>
+	
+	<update id="updateClientGroup" parameterType="map" >
+	   update client_groups set client_id = #{keepId} where client_id in 
+	    <foreach collection="list" item="id" separator="," open="(" close=")">
+            ${id}
+       </foreach>
+	</update>
+	
+	
+	
+	<!-- end -->
+	
+</mapper> 

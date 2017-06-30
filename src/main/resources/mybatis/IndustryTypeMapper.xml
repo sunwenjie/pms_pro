@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.IndustryTypeMapper">
+
+    <!-- 名字有重复, 取ID最大的一个  -->
+	<select id="search" parameterType="map" resultType="IndustryType">
+		select max(id) as id, name as name_en, name_cn as name
+		from xmo.industries group by name order by name_en
+	</select>
+	
+</mapper> 

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.asgab.repository.LogMapper">
+
+	<sql id="log-columns">
+		operateType, module, operateUserId, operateBy, operateTime, content, filePath, pKey, remark, remark1, remark2, deleted
+	</sql>
+
+	<select id="get" parameterType="long" resultType="Log">
+		select id, <include refid="log-columns" /> from logs where id = #{id}
+	</select>
+
+	<select id="search" parameterType="map" resultType="Log">
+		select id, <include refid="log-columns" />
+		from logs where deleted = 1
+		<if test="pKey != null and pKey !=''">
+			and pKey = #{pKey}
+		</if>
+		<if test="module != null and module !=''">
+			and module = #{module}
+		</if>
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+		select count(1) 
+		from logs where deleted = 1
+		<if test="pKey != null and pKey !=''">
+			and pKey = #{pKey}
+		</if>
+		<if test="module != null and module !=''">
+			and module = #{module}
+		</if>
+	</select>
+
+	<insert id="save" parameterType="Log" useGeneratedKeys="true" keyProperty="id">
+		insert into logs (<include refid="log-columns" />)
+		values (#{operateType},#{module},#{operateUserId},#{operateBy}, #{operateTime}, #{content},#{filePath},#{pKey},#{remark},#{remark1},#{remark2},1)
+	</insert>
+	
+	<insert id="update" parameterType="User">
+		update logs set 
+		operateType=#{operateType},
+		module=#{module},
+		operateUserId=#{operateUserId},
+		operateBy=#{operateBy},
+		operateTime=#{operateTime},
+		content=#{content},
+		filePath=#{filePath},
+		pKey=#{pKey},
+		remark=#{remark}, 
+		remark1=#{remark1},
+		remark2=#{remark2},
+		deleted=#{deleted}
+		where id = #{id}
+	</insert>
+	
+	<delete id="delete" parameterType="long">
+	     update logs set deleted=2 where id=#{id}
+	</delete>
+</mapper> 

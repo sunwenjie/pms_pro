@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.BusinessOpportunityMapper">
+	
+	<sql id="businessOpportunityColumns-join">
+		o.name,o.advertiser_id,o.budget,o.currency_id,o.deliver_start_date,o.deliver_end_date,o.owner_sale,o.cooperate_sales,
+		o.exist_msa,o.exist_service,o.status,o.progress,o.remark,o.deleted_at,o.created_at,o.updated_at,
+		o.created_by,o.lostDate,o.completedDate
+	</sql>
+	
+	<select id="get" parameterType="long" resultType="BusinessOpportunity">
+		select o.id,<include refid="businessOpportunityColumns-join" />,c.clientname as advertiser,
+			u_sales.name as owner_sale_name
+		from sales_booking_production.business_opportunities o left join xmo.clients c on o.advertiser_id = c.id
+			left join xmo.users u_sales on o.owner_sale = u_sales.id
+		where o.deleted_at is null and o.id=#{id}
+	</select>
+
+	<!-- 查询用户,演示: 1.输入用map传入多个参数 2.<where>语句, 智能添加where和and关键字 3.输出直接映射对象 -->
+	<select id="search" parameterType="map" resultType="BusinessOpportunity">
+		select o.id,<include refid="businessOpportunityColumns-join" />,c.clientname as advertiser, 
+		  u.name as username,channels.channel_name as agency , currencies.name as currencyName,
+		  ifnull(o.updated_at,o.created_at) as orderByDate
+		from sales_booking_production.business_opportunities o left join xmo.clients c on o.advertiser_id = c.id
+		left join xmo.users u on o.created_by = u.id 
+		left join sales_booking_production.channels channels on channels.id = c.channel
+		left join xmo.currencies currencies on currencies.id = o.currency_id
+		where o.deleted_at is null
+		<if test="fmt_name != null">
+			and (o.name like "%"#{fmt_name}"%" or CAST(o.id AS CHAR) like "%"#{fmt_name}"%")
+		</if>
+		<if test="advertiser != null">
+			and (c.clientname like "%"#{advertiser}"%" or channels.channel_name like "%"#{advertiser}"%")
+		</if>
+		<if test="statuses != null">
+			and o.status in
+			<foreach collection="statuses" index="index" item="status" open="(" separator="," close=")" >   
+                  #{status}
+            </foreach>
+		</if>
+		<if test="created_by != null">
+            and o.created_by = #{created_by}		    
+		</if>
+		<if test="created_period != null">
+		    <![CDATA[
+		    and o.deliver_start_date <= #{created_period_end} and o.deliver_end_date >= #{created_period_start}
+		    ]]>
+        </if>
+		<if test="sort != null and sort!=''">
+			order by ${sort}
+		</if>
+	</select>
+	
+	<select id="count" parameterType="map" resultType="int">
+		select count(1) 
+		from sales_booking_production.business_opportunities o left join xmo.clients c on o.advertiser_id = c.id 
+		left join sales_booking_production.channels channels on channels.id = c.channel
+		where o.deleted_at is null
+		<if test="fmt_name != null">
+            and (o.name like "%"#{fmt_name}"%" or CAST(o.id AS CHAR) like "%"#{fmt_name}"%")
+        </if>
+		<if test="advertiser != null">
+			and (c.clientname like "%"#{advertiser}"%" or channels.channel_name like "%"#{advertiser}"%")
+		</if>
+		<if test="statuses != null">
+            and o.status in
+            <foreach collection="statuses" index="index" item="status" open="(" separator="," close=")" >   
+                  #{status}
+            </foreach>
+        </if>
+		<if test="created_by != null">
+            and o.created_by = #{created_by}            
+        </if>
+        <if test="created_period != null">
+            <![CDATA[
+            and o.deliver_start_date <= #{created_period_end} and o.deliver_end_date >= #{created_period_start}
+            ]]>      
+        </if>
+	</select>
+
+	<insert id="save" parameterType="BusinessOpportunity" useGeneratedKeys="true" keyProperty="id">
+		insert into sales_booking_production.business_opportunities (name,advertiser_id,budget,currency_id,deliver_start_date,deliver_end_date,owner_sale,cooperate_sales,
+				exist_msa,exist_service,status,progress,remark,created_at,created_by,lostDate,completedDate)
+		values (#{name},#{advertiser_id},#{budget},#{currency_id},#{deliver_start_date},#{deliver_end_date},#{owner_sale},
+				#{cooperate_sales},#{exist_msa},#{exist_service},#{status},#{progress},#{remark},#{created_at},#{created_by},#{lostDate},#{completedDate})
+	</insert>
+	
+	<insert id="update" parameterType="BusinessOpportunity">
+		update sales_booking_production.business_opportunities set 
+			name=#{name},
+			advertiser_id=#{advertiser_id},
+			budget=#{budget},
+			currency_id=#{currency_id},
+			deliver_start_date=#{deliver_start_date},
+			deliver_end_date=#{deliver_end_date},
+			owner_sale=#{owner_sale},
+			cooperate_sales=#{cooperate_sales},
+			exist_msa=#{exist_msa},
+			exist_service=#{exist_service},
+			status=#{status},
+			progress=#{progress},
+			remark=#{remark},
+			updated_at=#{updated_at},
+			created_by=#{created_by},
+			lostDate=#{lostDate},
+			completedDate=#{completedDate}
+		where id = #{id}
+	</insert>
+	
+	<delete id="delete" parameterType="BusinessOpportunityProduct">
+	     update sales_booking_production.business_opportunities set deleted_at=#{deleted_at} where id=#{id}
+	</delete>
+	
+	<select id="getCurrencys" parameterType="int" resultType="Currency">
+		select id , name from xmo.currencies
+	</select>
+	
+	<select id="getListByCondition" parameterType="map" resultType="BusinessOpportunity">
+	    select o.id,<include refid="businessOpportunityColumns-join" />,c.clientname as advertiser
+		from sales_booking_production.business_opportunities o left join xmo.clients c on o.advertiser_id = c.id
+		where o.deleted_at is null
+		<if test="advertiserIds != null">
+		    and o.advertiser_id in (${advertiserIds})
+		</if>
+		<if test="mergedData != null">
+			<![CDATA[
+		    and o.deliver_start_date >= #{mergedData}   
+		    ]]>
+		</if>
+	</select>
+	
+	<select id="getOrderCodeByOpportunityId" parameterType="long" resultType="String" >
+	   select code from orders o left join business_opportunity_orders bo on o.id = bo.order_id 
+	   where bo.business_opportunity_id=#{value} 
+	</select>
+	
+	<insert id="saveBusinessOpportunityRemark" parameterType="BusinessOpportunityRemark" >
+	   insert into business_opportunity_remarks(business_opportunity_id,progress,content,created_at) values
+	   ( #{business_opportunity_id},#{progress},#{content},#{created_at} )
+	</insert>
+	
+	<select id="getRemarksByOpportunityId" parameterType="long" resultType="BusinessOpportunityRemark" >
+       select id,business_opportunity_id,progress,content,created_at 
+       from business_opportunity_remarks 
+       where business_opportunity_id=#{value}
+       order by created_at asc
+    </select>
+    
+    <select id="getRemarksByOpportunityIds" parameterType="list" resultType="BusinessOpportunityRemark" >
+       select id,business_opportunity_id,progress,content,created_at 
+       from business_opportunity_remarks 
+       where business_opportunity_id in 
+       <foreach collection="list" index="index" item="id" open="(" separator="," close=")" >   
+            #{id}
+        </foreach>
+        order by created_at asc
+    </select>
+    
+    <select id="countOrdersByOpportunityId" parameterType="long" resultType="int">
+        select count(0) from orders o 
+			left join business_opportunity_orders bo on bo.order_id = o.id 
+			left join business_opportunities b on b.id = bo.business_opportunity_id
+			where b.id=#{value}
+    </select>
+	
+</mapper> 

@@ -1,0 +1,86 @@
+/*自定义的样式*/
+.disabled {
+	cursor: pointer !important;
+}
+
+.btn-blue {
+	background-color: #336dc6;
+}
+
+.divider-horizontal {
+	height: 1px;
+	width: 100%;
+	display: block; /* for use on default inline elements like span */
+	margin: 9px 0;
+	overflow: hidden;
+	background-color: #e5e5e5;
+}
+
+.btn-50 {
+	width: 50px;
+}
+
+/*切换语言*/
+body, button, input, select, textarea, h1, h2, h3, h4, h5, h6 {
+	font-family: Microsoft YaHei, Tahoma, Helvetica, Arial, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+	font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Arial", "Verdana",
+		"Tahoma";
+}
+
+body {
+	font-family: "Microsoft YaHei", "Arial", "Verdana", "Tahoma";
+	color: #424242;
+	font-size: 12px;
+}
+/*langauage ch or en*/
+.x-lang {
+	position: fixed;
+	top: 2px;
+	right: 5px;
+}
+
+.x-lang-en {
+	width: 24px;
+	height: 25px;
+	border: 1px solid #acb0bc;
+	display: inline-block;
+	background-color: #acb0bc;
+	border-radius: 24px;
+	text-align: center;
+	color: #434343;
+	vertical-align: middle;
+	cursor: pointer;
+	line-height: 24px;
+	box-sizing: border-box;
+}
+
+.x-lang-en:after {
+	content: "E"
+}
+
+.x-lang-ch {
+	width: 24px;
+	height: 25px;
+	border: 1px solid #acb0bc;
+	display: inline-block;
+	background-color: #acb0bc;
+	border-radius: 24px;
+	text-align: center;
+	color: #434343;
+	vertical-align: middle;
+	cursor: pointer;
+	line-height: 24px;
+	box-sizing: border-box;
+}
+
+.x-lang-ch:after {
+	content: "中"
+}
+
+.x-lang-ch.selected, .x-lang-en.selected {
+	background-color: #336dc6;
+	color: white
+}

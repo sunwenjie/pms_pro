@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须指向Dao接口 -->
+<mapper namespace="com.asgab.repository.DataSharingMapper">
+    
+    <select id="get" parameterType="long" resultType="DataSharing">
+        select id, user_id, parent_id,assistant_id, team_name, type, created_at, created_by,currency_id
+        from data_sharing
+        where id = #{value}
+    </select>
+    
+    <select id="getByUserId" parameterType="long" resultType="DataSharing">
+        select a.id, a.user_id, a.parent_id, a.assistant_id,a.team_name, a.type, a.created_at, a.created_by,
+        CONCAT(b.name, ' (' , IFNULL(b.useremail,''), ')') as showName,a.currency_id
+        from data_sharing a left join xmo.users b on a.user_id = b.id
+        where a.user_id = #{value}
+    </select>
+    
+    <insert id="save" parameterType="DataSharing" useGeneratedKeys="true">
+        insert into data_sharing (user_id, parent_id, assistant_id,team_name, type, created_at, created_by,currency_id)
+        values(#{user_id}, #{parent_id}, #{assistant_id},#{team_name}, #{type}, #{created_at}, #{created_by},#{currency_id})
+    </insert>
+    
+    <update id="update" parameterType="DataSharing">
+        update data_sharing set 
+        	user_id = #{user_id}, parent_id = #{parent_id}, assistant_id=#{assistant_id}, team_name = #{team_name}, type = #{type}, 
+       		created_at = #{created_at}, created_by = #{created_by},currency_id=#{currency_id}
+       	where id = #{id}	
+    </update>
+    
+    <delete id="delete" parameterType="long">
+        delete from data_sharing where id = #{value}
+    </delete>
+    
+    <select id="queryChildrenDataSharing" parameterType="long" resultType="User">
+	    select id, name, useremail as email from xmo.users where find_in_Set(id,queryChildrenDataSharing(#{value}))
+	</select>
+	
+    <select id="getViewDataSharing" parameterType="long" resultType="string">
+        select replace(queryChildrenDataSharing(#{value}),'$,','')
+    </select>
+	
+	<select id="getUsersByParentId" parameterType="long" resultType="User">
+		select a.id,a.name from xmo.users a left join data_sharing b on a.id = b.user_id where b.parent_id = #{value}
+	</select>
+
+    <select id="getDirectShareUsers" parameterType="long" resultType="User">
+        select id, name, useremail as email from xmo.users where id in
+        (
+        	select user_id from data_sharing where parent_id = #{value}
+        )
+    </select>
+    
+    <select id="getListByParentId" parameterType="long" resultType="DataSharing">
+        select a.id, a.user_id, a.parent_id, a.assistant_id,a.team_name, a.type, a.created_at, a.created_by,
+        CONCAT(b.name, ' (' , IFNULL(b.useremail,''), ')', IFNULL(CONCAT(' - ',a.team_name), '')) as showName,a.currency_id
+        from data_sharing a left join xmo.users b on a.user_id = b.id
+        where a.parent_id = #{value}
+    </select>
+    
+    <select id="getDataSharingByUserId" parameterType="long" resultType="DataSharing">
+	    select id, user_id, parent_id,assistant_id,team_name,type,created_at,created_by,currency_id from data_sharing 
+	    <if test="value !=null">
+	       where find_in_Set(user_id,queryChildrenDataSharing(#{value}))
+	    </if>
+	</select>
+	
+	<select id="getTeamByUserIds" parameterType="list" resultType="DataSharing">
+		select id, user_id, parent_id,assistant_id,team_name,type,created_at,created_by,currency_id from data_sharing 
+		where user_id in 
+		<foreach collection="list" index="index" item="user_id" open="(" separator="," close=")" >
+			#{user_id}
+		</foreach>
+	</select>
+	
+	<select id="getAllSaleTeams" parameterType="long" resultType="DataSharing">
+	    select id, user_id, parent_id,assistant_id,team_name,type,created_at,created_by,currency_id from data_sharing where team_name is not null and team_name !=''
+	</select>
+	
+	<select id="getAllAssistants" resultType="DataSharing">
+        select id, user_id, parent_id,assistant_id,team_name,type,created_at,created_by,currency_id from data_sharing where assistant_id is not null
+    </select>
+    
+    <select id="getAssistant" parameterType="long" resultType="DataSharing">
+        select id, user_id, parent_id,assistant_id,team_name,type,created_at,created_by,currency_id from data_sharing where assistant_id = #{value}
+    </select>
+
+</mapper>  
